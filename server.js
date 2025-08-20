@@ -28,12 +28,12 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Connect to MongoDB with UTF-8 encoding
-// Use environment variable or default to local MongoDB
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/portuguese_learning';
+const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/portuguese_learning';
+
+// Log the URI being used (helpful for debugging)
+console.log('Attempting to connect to MongoDB with URI:', mongoURI);
 
 mongoose.connect(mongoURI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
   family: 4,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
@@ -41,15 +41,12 @@ mongoose.connect(mongoURI, {
 .then(() => console.log('MongoDB Connected...'))
 .catch(err => {
   console.error('MongoDB Connection Error:', err);
+  console.error('Connection string used:', mongoURI);
   process.exit(1);
 });
 
-
-
-
 // API Routes
 // ===== GROUPS MANAGEMENT ENDPOINTS =====
-
 // Get all groups
 app.get('/api/groups', async (req, res) => {
   console.log('GET /api/groups called');
