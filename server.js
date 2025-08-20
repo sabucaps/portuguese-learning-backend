@@ -31,13 +31,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Use environment variable or default to local MongoDB
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/portuguese_learning';
 
-mongoose.connect(mongoURI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  family: 4,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-})
+mongoose.connect(mongoURI)
 .then(() => console.log('MongoDB Connected...'))
 .catch(err => {
   console.error('MongoDB Connection Error:', err);
@@ -615,4 +609,5 @@ app.listen(PORT, () => {
   console.log(`Grammar lessons: http://localhost:${PORT}/api/grammar-lessons`);
   console.log(`Debug endpoint: http://localhost:${PORT}/api/debug`);
   console.log(`Admin form: http://localhost:${PORT}/admin/question-form`);
+
 });
