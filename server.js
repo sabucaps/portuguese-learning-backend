@@ -7,6 +7,7 @@ const fs = require('fs');
 const csv = require('csv-parser');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const multer = require('multer');
+const ExcelJS = require('exceljs');
 
 // Load environment variables
 dotenv.config();
@@ -385,14 +386,14 @@ app.delete('/api/words/:id', async (req, res) => {
   }
 });
 
-// ===== CSV EXPORT/IMPORT ENDPOINTS =====
-// Export words to CSV
+// ===== EXPORT ENDPOINTS =====
+// Improved CSV Export
 app.get('/api/words/export/csv', async (req, res) => {
   console.log('GET /api/words/export/csv called');
   
   try {
-    // Get all words
-    const words = await Word.find({});
+    // Get all words, sorted by Portuguese
+    const words = await Word.find({}).sort({ portuguese: 1 });
     console.log(`Found ${words.length} words to export`);
     
     if (words.length === 0) {
@@ -400,7 +401,7 @@ app.get('/api/words/export/csv', async (req, res) => {
     }
     
     // Create CSV file path
-    const filePath = path.join(__dirname, 'exports', 'words_export.csv');
+    const filePath = path.join(__dirname, 'exports', 'portuguese_words_export.csv');
     
     // Ensure exports directory exists
     const exportsDir = path.join(__dirname, 'exports');
@@ -408,25 +409,27 @@ app.get('/api/words/export/csv', async (req, res) => {
       fs.mkdirSync(exportsDir, { recursive: true });
     }
     
-    // Create CSV writer
+    // Create CSV writer with better formatting
     const csvWriter = createCsvWriter({
       path: filePath,
       header: [
         { id: 'portuguese', title: 'Portuguese' },
-        { id: 'english', title: 'English' },
-        { id: 'group', title: 'Group' },
-        { id: 'example', title: 'Example' },
-        { id: 'imageUrl', title: 'Image URL' }
-      ]
+        { id: 'english', title: 'English Translation' },
+        { id: 'group', title: 'Category' },
+        { id: 'example', title: 'Example Sentence' },
+        { id: 'difficulty', title: 'Difficulty Level' }
+      ],
+      alwaysQuote: true,
+      encoding: 'utf8'
     });
     
-    // Prepare data for CSV (handle arrays like examples)
+    // Prepare data for CSV with better formatting
     const csvData = words.map(word => ({
-      portuguese: word.portuguese,
-      english: word.english,
-      group: word.group || '',
+      portuguese: word.portuguese || '',
+      english: word.english || '',
+      group: word.group || 'Uncategorized',
       example: word.examples && word.examples.length > 0 ? word.examples[0] : '',
-      imageUrl: word.imageUrl || ''
+      difficulty: word.difficulty || 'Beginner'
     }));
     
     // Write words to CSV
@@ -434,8 +437,9 @@ app.get('/api/words/export/csv', async (req, res) => {
     
     console.log(`CSV file created at: ${filePath}`);
     
-    // Send the file as download
-    res.download(filePath, 'portuguese_words_export.csv', (err) => {
+    // Send the file as download with a better filename
+    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    res.download(filePath, `portuguese_vocabulary_${date}.csv`, (err) => {
       if (err) {
         console.error('Error downloading file:', err);
         res.status(500).json({ error: 'Error downloading file' });
@@ -452,7 +456,135 @@ app.get('/api/words/export/csv', async (req, res) => {
   }
 });
 
-// Import words from CSV
+// JSON Export
+app.get('/api/words/export/json', async (req, res) => {
+  console.log('GET /api/words/export/json called');
+  
+  try {
+    // Get all words, sorted by Portuguese
+    const words = await Word.find({}).sort({ portuguese: 1 });
+    console.log(`Found ${words.length} words to export`);
+    
+    if (words.length === 0) {
+      return res.status(404).json({ error: 'No words found to export' });
+    }
+    
+    // Prepare data for JSON export
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      totalWords: words.length,
+      words: words.map(word => ({
+        portuguese: word.portuguese,
+        english: word.english,
+        group: word.group || 'Uncategorized',
+        examples: word.examples || [],
+        difficulty: word.difficulty || 'Beginner',
+        createdAt: word.createdAt,
+        updatedAt: word.updatedAt
+      }))
+    };
+    
+    // Set headers for JSON download
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename=portuguese_vocabulary_${new Date().toISOString().split('T')[0]}.json`);
+    
+    // Send JSON data
+    res.json(exportData);
+  } catch (error) {
+    console.error('Error exporting words to JSON:', error);
+    res.status(500).json({ error: 'Error exporting words to JSON', details: error.message });
+  }
+});
+
+// Excel Export
+app.get('/api/words/export/excel', async (req, res) => {
+  console.log('GET /api/words/export/excel called');
+  
+  try {
+    // Get all words, sorted by Portuguese
+    const words = await Word.find({}).sort({ portuguese: 1 });
+    console.log(`Found ${words.length} words to export`);
+    
+    if (words.length === 0) {
+      return res.status(404).json({ error: 'No words found to export' });
+    }
+    
+    // Create a new workbook
+    const workbook = new ExcelJS.Workbook();
+    
+    // Add a worksheet for vocabulary
+    const vocabularyWorksheet = workbook.addWorksheet('Vocabulary');
+    
+    // Define columns
+    vocabularyWorksheet.columns = [
+      { header: 'Portuguese', key: 'portuguese', width: 20 },
+      { header: 'English', key: 'english', width: 20 },
+      { header: 'Category', key: 'group', width: 15 },
+      { header: 'Difficulty', key: 'difficulty', width: 12 },
+      { header: 'Example', key: 'example', width: 40 }
+    ];
+    
+    // Add data rows
+    words.forEach(word => {
+      vocabularyWorksheet.addRow({
+        portuguese: word.portuguese || '',
+        english: word.english || '',
+        group: word.group || 'Uncategorized',
+        difficulty: word.difficulty || 'Beginner',
+        example: word.examples && word.examples.length > 0 ? word.examples[0] : ''
+      });
+    });
+    
+    // Add a worksheet for statistics
+    const statsWorksheet = workbook.addWorksheet('Statistics');
+    
+    // Calculate statistics
+    const groupCounts = {};
+    const difficultyCounts = {};
+    
+    words.forEach(word => {
+      const group = word.group || 'Uncategorized';
+      const difficulty = word.difficulty || 'Beginner';
+      
+      groupCounts[group] = (groupCounts[group] || 0) + 1;
+      difficultyCounts[difficulty] = (difficultyCounts[difficulty] || 0) + 1;
+    });
+    
+    // Add statistics data
+    statsWorksheet.addRow(['Export Statistics']);
+    statsWorksheet.addRow(['Total Words', words.length]);
+    statsWorksheet.addRow([]);
+    statsWorksheet.addRow(['Category', 'Count']);
+    Object.entries(groupCounts).forEach(([group, count]) => {
+      statsWorksheet.addRow([group, count]);
+    });
+    statsWorksheet.addRow([]);
+    statsWorksheet.addRow(['Difficulty', 'Count']);
+    Object.entries(difficultyCounts).forEach(([difficulty, count]) => {
+      statsWorksheet.addRow([difficulty, count]);
+    });
+    
+    // Style the header row
+    const headerRow = vocabularyWorksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+    
+    // Generate Excel file
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    // Set headers for Excel download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=portuguese_vocabulary_${new Date().toISOString().split('T')[0]}.xlsx`);
+    
+    // Send Excel file
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error exporting words to Excel:', error);
+    res.status(500).json({ error: 'Error exporting words to Excel', details: error.message });
+  }
+});
+
+// CSV Import
 app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => {
   console.log('POST /api/words/import/csv called');
   
@@ -505,7 +637,7 @@ app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => 
                 english: row.English.trim(),
                 group: row.Group ? row.Group.trim() : null,
                 examples: row.Example ? [row.Example.trim()] : [],
-                imageUrl: row['Image URL'] ? row['Image URL'].trim() : null
+                difficulty: row.Difficulty ? row.Difficulty.trim() : 'Beginner'
               });
               
               await newWord.save();
@@ -839,5 +971,7 @@ app.listen(PORT, () => {
   console.log(`Debug endpoint: http://localhost:${PORT}/api/debug`);
   console.log(`Admin form: http://localhost:${PORT}/admin/question-form`);
   console.log(`CSV Export: http://localhost:${PORT}/api/words/export/csv`);
+  console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
+  console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
   console.log(`CSV Import: http://localhost:${PORT}/api/words/import/csv`);
 });
