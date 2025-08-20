@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Connect to MongoDB with UTF-8 encoding
 // Use environment variable or default to local MongoDB
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/portuguese_learning';
+const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/portuguese_learning';
 
 mongoose.connect(mongoURI)
 .then(() => console.log('MongoDB Connected...'))
@@ -611,3 +611,4 @@ app.listen(PORT, () => {
   console.log(`Admin form: http://localhost:${PORT}/admin/question-form`);
 
 });
+
