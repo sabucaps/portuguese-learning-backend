@@ -13,7 +13,6 @@ const ExcelJS = require('exceljs');
 dotenv.config();
 
 // Import models
-const Verb = require('./models/Verb');
 const Word = require('./models/Word');
 const Question = require('./models/Question');
 const Story = require('./models/Story');
@@ -41,10 +40,17 @@ app.use((req, res, next) => {
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Connect to MongoDB with UTF-8 encoding
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/portuguese_learning';
 // Log the URI being used (helpful for debugging)
 console.log('Attempting to connect to MongoDB with URI:', mongoURI);
+
 mongoose.connect(mongoURI, {
   family: 4,
   serverSelectionTimeoutMS: 5000,
@@ -120,70 +126,6 @@ app.get('/api/debug', async (req, res) => {
   } catch (err) {
     console.error('Error in debug endpoint:', err);
     res.status(500).json({ error: 'Debug error', details: err.message });
-  }
-});
-
-// Get all verbs
-app.get('/api/verbs', async (req, res) => {
-  try {
-    const verbs = await Verb.find().sort({ portuguese: 1 });
-    res.json(verbs);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get a specific verb
-app.get('/api/verbs/:id', async (req, res) => {
-  try {
-    const verb = await Verb.findById(req.params.id);
-    if (!verb) return res.status(404).json({ error: 'Verb not found' });
-    res.json(verb);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get verbs by group
-app.get('/api/verbs/group/:group', async (req, res) => {
-  try {
-    const verbs = await Verb.find({ group: req.params.group }).sort({ portuguese: 1 });
-    res.json(verbs);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add a new verb
-app.post('/api/verbs', async (req, res) => {
-  try {
-    const verb = new Verb(req.body);
-    await verb.save();
-    res.status(201).json(verb);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Update a verb
-app.put('/api/verbs/:id', async (req, res) => {
-  try {
-    const verb = await Verb.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!verb) return res.status(404).json({ error: 'Verb not found' });
-    res.json(verb);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Delete a verb
-app.delete('/api/verbs/:id', async (req, res) => {
-  try {
-    const verb = await Verb.findByIdAndDelete(req.params.id);
-    if (!verb) return res.status(404).json({ error: 'Verb not found' });
-    res.json({ message: 'Verb deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -649,7 +591,7 @@ app.get('/api/words/export/excel', async (req, res) => {
   }
 });
 
-// CSV Import
+// CSV Import - FIXED VERSION
 app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => {
   console.log('POST /api/words/import/csv called');
   
@@ -657,63 +599,80 @@ app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => 
     return res.status(400).json({ error: 'No file uploaded' });
   }
   
+  const filePath = req.file.path;
+  const skipExisting = req.body.skipExisting === 'true';
+  
+  console.log(`Processing CSV file: ${filePath}`);
+  console.log(`Skip existing words: ${skipExisting}`);
+  
   try {
-    const filePath = req.file.path;
     const results = [];
-    let importCount = 0;
-    let skipCount = 0;
-    let errorCount = 0;
+    let totalRows = 0;
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
     
-    // Read and parse CSV file
-    fs.createReadStream(filePath)
+    // Create a readable stream from the file
+    const stream = fs.createReadStream(filePath);
+    
+    // Pipe the stream through csv-parser
+    stream
       .pipe(csv())
       .on('data', (data) => {
-        results.push(data);
+        totalRows++;
+        
+        // Convert keys to lowercase for case-insensitive matching
+        const lowerCaseData = {};
+        Object.keys(data).forEach(key => {
+          lowerCaseData[key.toLowerCase()] = data[key];
+        });
+        
+        // Validate required fields
+        if (!lowerCaseData.portuguese || !lowerCaseData.english) {
+          errors++;
+          return;
+        }
+        
+        results.push({
+          portuguese: lowerCaseData.portuguese,
+          english: lowerCaseData.english,
+          group: lowerCaseData.group || null,
+          examples: lowerCaseData.example ? [lowerCaseData.example] : [],
+          imageUrl: lowerCaseData['image url'] || null
+        });
       })
       .on('end', async () => {
         try {
-          console.log(`CSV file parsed with ${results.length} rows`);
+          console.log(`CSV file parsed with ${totalRows} rows`);
+          console.log(`Valid rows to process: ${results.length}`);
           
-          // Process each row
-          for (const row of results) {
+          // Process each valid row
+          for (const wordData of results) {
             try {
-              // Skip empty rows
-              if (!row.Portuguese || !row.English) {
-                skipCount++;
-                continue;
-              }
-              
-              // Check if word already exists
-              const existingWord = await Word.findOne({
-                $or: [
-                  { portuguese: row.Portuguese.trim() },
-                  { english: row.English.trim() }
-                ]
-              });
-              
-              if (existingWord) {
-                skipCount++;
-                continue;
+              // Check if word already exists if skipExisting is true
+              if (skipExisting) {
+                const existingWord = await Word.findOne({
+                  portuguese: wordData.portuguese,
+                  english: wordData.english
+                });
+                
+                if (existingWord) {
+                  skipped++;
+                  continue;
+                }
               }
               
               // Create new word
-              const newWord = new Word({
-                portuguese: row.Portuguese.trim(),
-                english: row.English.trim(),
-                group: row.Group ? row.Group.trim() : null,
-                examples: row.Example ? [row.Example.trim()] : [],
-                difficulty: row.Difficulty ? row.Difficulty.trim() : 'Beginner'
-              });
-              
+              const newWord = new Word(wordData);
               await newWord.save();
-              importCount++;
+              imported++;
             } catch (error) {
               console.error('Error importing word:', error);
-              errorCount++;
+              errors++;
             }
           }
           
-          // Delete the uploaded file
+          // Clean up the uploaded file
           fs.unlink(filePath, (err) => {
             if (err) console.error('Error deleting uploaded file:', err);
           });
@@ -721,24 +680,42 @@ app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => 
           // Return import results
           res.json({
             message: 'CSV import completed',
-            totalRows: results.length,
-            imported: importCount,
-            skipped: skipCount,
-            errors: errorCount
+            totalRows: totalRows,
+            imported: imported,
+            skipped: skipped,
+            errors: errors
           });
           
-          console.log(`Import completed: ${importCount} imported, ${skipCount} skipped, ${errorCount} errors`);
+          console.log(`Import completed: ${imported} imported, ${skipped} skipped, ${errors} errors`);
         } catch (error) {
           console.error('Error processing CSV data:', error);
+          
+          // Clean up the uploaded file
+          fs.unlink(filePath, (err) => {
+            if (err) console.error('Error deleting uploaded file:', err);
+          });
+          
           res.status(500).json({ error: 'Error processing CSV data', details: error.message });
         }
       })
       .on('error', (error) => {
         console.error('Error reading CSV file:', error);
+        
+        // Clean up the uploaded file
+        fs.unlink(filePath, (err) => {
+          if (err) console.error('Error deleting uploaded file:', err);
+        });
+        
         res.status(500).json({ error: 'Error reading CSV file', details: error.message });
       });
   } catch (error) {
     console.error('Error importing CSV:', error);
+    
+    // Clean up the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting uploaded file:', err);
+    });
+    
     res.status(500).json({ error: 'Error importing CSV', details: error.message });
   }
 });
