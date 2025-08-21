@@ -8,6 +8,7 @@ const csv = require('csv-parser');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const multer = require('multer');
 const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 
 // Load environment variables
 dotenv.config();
@@ -591,8 +592,9 @@ app.get('/api/words/export/excel', async (req, res) => {
   }
 });
 
-// CSV Import - FIXED VERSION
-app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => {
+// ===== IMPORT ENDPOINTS =====
+// CSV Import
+app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
   console.log('POST /api/words/import/csv called');
   
   if (!req.file) {
@@ -717,6 +719,194 @@ app.post('/api/words/import/csv', upload.single('csvFile'), async (req, res) => 
     });
     
     res.status(500).json({ error: 'Error importing CSV', details: error.message });
+  }
+});
+
+// JSON Import
+app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
+  console.log('POST /api/words/import/json called');
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  const filePath = req.file.path;
+  const skipExisting = req.body.skipExisting === 'true';
+  
+  console.log(`Processing JSON file: ${filePath}`);
+  console.log(`Skip existing words: ${skipExisting}`);
+  
+  try {
+    // Read the JSON file
+    const fileData = fs.readFileSync(filePath, 'utf8');
+    const wordsData = JSON.parse(fileData);
+    
+    if (!Array.isArray(wordsData)) {
+      return res.status(400).json({ error: 'JSON file must contain an array of word objects' });
+    }
+    
+    let totalRows = wordsData.length;
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+    
+    // Process each word
+    for (const wordData of wordsData) {
+      try {
+        // Validate required fields
+        if (!wordData.portuguese || !wordData.english) {
+          errors++;
+          continue;
+        }
+        
+        // Check if word already exists if skipExisting is true
+        if (skipExisting) {
+          const existingWord = await Word.findOne({
+            portuguese: wordData.portuguese,
+            english: wordData.english
+          });
+          
+          if (existingWord) {
+            skipped++;
+            continue;
+          }
+        }
+        
+        // Create new word
+        const newWord = new Word({
+          portuguese: wordData.portuguese,
+          english: wordData.english,
+          group: wordData.group || null,
+          examples: wordData.examples || [],
+          imageUrl: wordData.imageUrl || null
+        });
+        
+        await newWord.save();
+        imported++;
+      } catch (error) {
+        console.error('Error importing word:', error);
+        errors++;
+      }
+    }
+    
+    // Clean up the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting uploaded file:', err);
+    });
+    
+    // Return import results
+    res.json({
+      message: 'JSON import completed',
+      totalRows: totalRows,
+      imported: imported,
+      skipped: skipped,
+      errors: errors
+    });
+    
+    console.log(`JSON import completed: ${imported} imported, ${skipped} skipped, ${errors} errors`);
+  } catch (error) {
+    console.error('Error importing JSON:', error);
+    
+    // Clean up the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting uploaded file:', err);
+    });
+    
+    res.status(500).json({ error: 'Error importing JSON', details: error.message });
+  }
+});
+
+// Excel Import
+app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
+  console.log('POST /api/words/import/excel called');
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  const filePath = req.file.path;
+  const skipExisting = req.body.skipExisting === 'true';
+  
+  console.log(`Processing Excel file: ${filePath}`);
+  console.log(`Skip existing words: ${skipExisting}`);
+  
+  try {
+    // Read the Excel file
+    const workbook = XLSX.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Convert to JSON
+    const wordsData = XLSX.utils.sheet_to_json(worksheet);
+    
+    let totalRows = wordsData.length;
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+    
+    // Process each word
+    for (const wordData of wordsData) {
+      try {
+        // Validate required fields
+        if (!wordData.Portuguese || !wordData.English) {
+          errors++;
+          continue;
+        }
+        
+        // Check if word already exists if skipExisting is true
+        if (skipExisting) {
+          const existingWord = await Word.findOne({
+            portuguese: wordData.Portuguese,
+            english: wordData.English
+          });
+          
+          if (existingWord) {
+            skipped++;
+            continue;
+          }
+        }
+        
+        // Create new word
+        const newWord = new Word({
+          portuguese: wordData.Portuguese,
+          english: wordData.English,
+          group: wordData.Group || null,
+          examples: wordData.Example ? [wordData.Example] : [],
+          imageUrl: wordData['Image URL'] || null
+        });
+        
+        await newWord.save();
+        imported++;
+      } catch (error) {
+        console.error('Error importing word:', error);
+        errors++;
+      }
+    }
+    
+    // Clean up the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting uploaded file:', err);
+    });
+    
+    // Return import results
+    res.json({
+      message: 'Excel import completed',
+      totalRows: totalRows,
+      imported: imported,
+      skipped: skipped,
+      errors: errors
+    });
+    
+    console.log(`Excel import completed: ${imported} imported, ${skipped} skipped, ${errors} errors`);
+  } catch (error) {
+    console.error('Error importing Excel:', error);
+    
+    // Clean up the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting uploaded file:', err);
+    });
+    
+    res.status(500).json({ error: 'Error importing Excel', details: error.message });
   }
 });
 
@@ -1016,4 +1206,6 @@ app.listen(PORT, () => {
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
   console.log(`CSV Import: http://localhost:${PORT}/api/words/import/csv`);
+  console.log(`JSON Import: http://localhost:${PORT}/api/words/import/json`);
+  console.log(`Excel Import: http://localhost:${PORT}/api/words/import/excel`);
 });
