@@ -13,6 +13,7 @@ const ExcelJS = require('exceljs');
 dotenv.config();
 
 // Import models
+const Verb = require('./models/Verb');
 const Word = require('./models/Word');
 const Question = require('./models/Question');
 const Story = require('./models/Story');
@@ -119,6 +120,70 @@ app.get('/api/debug', async (req, res) => {
   } catch (err) {
     console.error('Error in debug endpoint:', err);
     res.status(500).json({ error: 'Debug error', details: err.message });
+  }
+});
+
+// Get all verbs
+app.get('/api/verbs', async (req, res) => {
+  try {
+    const verbs = await Verb.find().sort({ portuguese: 1 });
+    res.json(verbs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a specific verb
+app.get('/api/verbs/:id', async (req, res) => {
+  try {
+    const verb = await Verb.findById(req.params.id);
+    if (!verb) return res.status(404).json({ error: 'Verb not found' });
+    res.json(verb);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get verbs by group
+app.get('/api/verbs/group/:group', async (req, res) => {
+  try {
+    const verbs = await Verb.find({ group: req.params.group }).sort({ portuguese: 1 });
+    res.json(verbs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add a new verb
+app.post('/api/verbs', async (req, res) => {
+  try {
+    const verb = new Verb(req.body);
+    await verb.save();
+    res.status(201).json(verb);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Update a verb
+app.put('/api/verbs/:id', async (req, res) => {
+  try {
+    const verb = await Verb.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!verb) return res.status(404).json({ error: 'Verb not found' });
+    res.json(verb);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Delete a verb
+app.delete('/api/verbs/:id', async (req, res) => {
+  try {
+    const verb = await Verb.findByIdAndDelete(req.params.id);
+    if (!verb) return res.status(404).json({ error: 'Verb not found' });
+    res.json({ message: 'Verb deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
