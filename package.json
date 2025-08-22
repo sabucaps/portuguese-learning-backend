@@ -35,7 +35,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.17.1",
     "multer": "^2.0.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "expo-haptics": "~14.1.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
