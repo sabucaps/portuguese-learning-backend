@@ -9,19 +9,15 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
-
 // Load environment variables
 dotenv.config();
-
 // Import models
 const Word = require('./models/Word');
 const Question = require('./models/Question');
 const Story = require('./models/Story');
 const GrammarLesson = require('./models/GrammarLesson');
-
 // Initialize Express app
 const app = express();
-
 // Middleware
 // Configure CORS for production
 app.use(cors({
@@ -31,27 +27,22 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
-
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
-
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-
 // Connect to MongoDB with UTF-8 encoding
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/portuguese_learning';
 // Log the URI being used (helpful for debugging)
 console.log('Attempting to connect to MongoDB with URI:', mongoURI);
-
 mongoose.connect(mongoURI, {
   family: 4,
   serverSelectionTimeoutMS: 5000,
@@ -63,7 +54,6 @@ mongoose.connect(mongoURI, {
   console.error('Connection string used:', mongoURI);
   process.exit(1);
 });
-
 // Simple test endpoint
 app.get('/api/test', (req, res) => {
   console.log('GET /api/test called');
@@ -73,7 +63,6 @@ app.get('/api/test', (req, res) => {
     port: process.env.PORT || 5000
   });
 });
-
 // Debug endpoint to check database structure
 app.get('/api/debug', async (req, res) => {
   console.log('GET /api/debug called');
@@ -129,7 +118,6 @@ app.get('/api/debug', async (req, res) => {
     res.status(500).json({ error: 'Debug error', details: err.message });
   }
 });
-
 // ===== GROUPS MANAGEMENT ENDPOINTS =====
 // Get all groups
 app.get('/api/groups', async (req, res) => {
@@ -171,7 +159,6 @@ app.get('/api/groups', async (req, res) => {
     res.status(500).json({ error: 'Error fetching groups', details: error.message });
   }
 });
-
 // Add a new group
 app.post('/api/groups', async (req, res) => {
   console.log('POST /api/groups called with:', req.body);
@@ -207,7 +194,6 @@ app.post('/api/groups', async (req, res) => {
     res.status(500).json({ error: 'Error creating group', details: err.message });
   }
 });
-
 // Update a group name
 app.put('/api/groups/:groupName', async (req, res) => {
   const { groupName } = req.params;
@@ -261,7 +247,6 @@ app.put('/api/groups/:groupName', async (req, res) => {
     res.status(500).json({ error: 'Error updating group', details: err.message });
   }
 });
-
 // Delete a group
 app.delete('/api/groups/:groupName', async (req, res) => {
   const { groupName } = req.params;
@@ -295,7 +280,6 @@ app.delete('/api/groups/:groupName', async (req, res) => {
     res.status(500).json({ error: 'Error deleting group', details: err.message });
   }
 });
-
 // ===== WORDS MANAGEMENT ENDPOINTS =====
 // Get all words
 app.get('/api/words', async (req, res) => {
@@ -310,7 +294,6 @@ app.get('/api/words', async (req, res) => {
     res.status(500).json({ error: 'Error fetching words' });
   }
 });
-
 // Get a specific word by ID
 app.get('/api/words/:id', async (req, res) => {
   const { id } = req.params;
@@ -332,7 +315,6 @@ app.get('/api/words/:id', async (req, res) => {
     res.status(500).json({ error: 'Error fetching word' });
   }
 });
-
 // Add a new word
 app.post('/api/words', async (req, res) => {
   console.log('POST /api/words called with:', req.body);
@@ -351,7 +333,6 @@ app.post('/api/words', async (req, res) => {
     res.status(400).json({ error: 'Error saving word', details: err.message });
   }
 });
-
 // Update a word
 app.put('/api/words/:id', async (req, res) => {
   const { id } = req.params;
@@ -372,7 +353,6 @@ app.put('/api/words/:id', async (req, res) => {
     res.status(400).json({ error: 'Error updating word', details: err.message });
   }
 });
-
 // Delete a word
 app.delete('/api/words/:id', async (req, res) => {
   const { id } = req.params;
@@ -393,7 +373,26 @@ app.delete('/api/words/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting word', details: err.message });
   }
 });
-
+// Get words with empty examples
+app.get('/api/words/empty-examples', async (req, res) => {
+  console.log('GET /api/words/empty-examples called');
+  
+  try {
+    const words = await Word.find({
+      $or: [
+        { examples: { $exists: false } },
+        { examples: { $eq: [] } }
+      ]
+    });
+    
+    console.log(`Found ${words.length} words with empty examples`);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json(words);
+  } catch (err) {
+    console.error('Error fetching words with empty examples:', err);
+    res.status(500).json({ error: 'Error fetching words with empty examples' });
+  }
+});
 // ===== EXPORT ENDPOINTS =====
 // Improved CSV Export
 app.get('/api/words/export/csv', async (req, res) => {
@@ -463,7 +462,6 @@ app.get('/api/words/export/csv', async (req, res) => {
     res.status(500).json({ error: 'Error exporting words to CSV', details: error.message });
   }
 });
-
 // JSON Export
 app.get('/api/words/export/json', async (req, res) => {
   console.log('GET /api/words/export/json called');
@@ -503,7 +501,6 @@ app.get('/api/words/export/json', async (req, res) => {
     res.status(500).json({ error: 'Error exporting words to JSON', details: error.message });
   }
 });
-
 // Excel Export
 app.get('/api/words/export/excel', async (req, res) => {
   console.log('GET /api/words/export/excel called');
@@ -591,7 +588,76 @@ app.get('/api/words/export/excel', async (req, res) => {
     res.status(500).json({ error: 'Error exporting words to Excel', details: error.message });
   }
 });
-
+// Export words without examples as CSV
+app.get('/api/words/export/empty-examples', async (req, res) => {
+  console.log('GET /api/words/export/empty-examples called');
+  
+  try {
+    // Find words with empty examples
+    const words = await Word.find({
+      $or: [
+        { examples: { $exists: false } },
+        { examples: { $eq: [] } }
+      ]
+    }).sort({ portuguese: 1 });
+    
+    if (words.length === 0) {
+      return res.status(404).json({ error: 'No words without examples found' });
+    }
+    
+    // Create CSV file path
+    const filePath = path.join(__dirname, 'exports', 'words_without_examples.csv');
+    
+    // Ensure exports directory exists
+    const exportsDir = path.join(__dirname, 'exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+    
+    // Create CSV writer
+    const csvWriter = createCsvWriter({
+      path: filePath,
+      header: [
+        { id: 'portuguese', title: 'Portuguese' },
+        { id: 'english', title: 'English Translation' },
+        { id: 'group', title: 'Category' },
+        { id: 'difficulty', title: 'Difficulty Level' }
+      ],
+      alwaysQuote: true,
+      encoding: 'utf8'
+    });
+    
+    // Prepare data for CSV
+    const csvData = words.map(word => ({
+      portuguese: word.portuguese || '',
+      english: word.english || '',
+      group: word.group || 'Uncategorized',
+      difficulty: word.difficulty || 'Beginner'
+    }));
+    
+    // Write words to CSV
+    await csvWriter.writeRecords(csvData);
+    
+    console.log(`CSV file created at: ${filePath}`);
+    
+    // Send the file as download
+    const date = new Date().toISOString().split('T')[0];
+    res.download(filePath, `words_without_examples_${date}.csv`, (err) => {
+      if (err) {
+        console.error('Error downloading file:', err);
+        res.status(500).json({ error: 'Error downloading file' });
+      } else {
+        // Delete the file after download
+        fs.unlink(filePath, (unlinkErr) => {
+          if (unlinkErr) console.error('Error deleting file:', unlinkErr);
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error exporting words without examples:', error);
+    res.status(500).json({ error: 'Error exporting words without examples', details: error.message });
+  }
+});
 // ===== IMPORT ENDPOINTS =====
 // CSV Import
 app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
@@ -721,7 +787,6 @@ app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Error importing CSV', details: error.message });
   }
 });
-
 // JSON Import
 app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
   console.log('POST /api/words/import/json called');
@@ -815,7 +880,6 @@ app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Error importing JSON', details: error.message });
   }
 });
-
 // Excel Import
 app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
   console.log('POST /api/words/import/excel called');
@@ -909,7 +973,6 @@ app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Error importing Excel', details: error.message });
   }
 });
-
 // ===== QUESTION MANAGEMENT ENDPOINTS =====
 // Get all questions
 app.get('/api/questions', async (req, res) => {
@@ -924,7 +987,6 @@ app.get('/api/questions', async (req, res) => {
     res.status(500).json({ error: 'Error fetching questions' });
   }
 });
-
 // Add a new question
 app.post('/api/questions', async (req, res) => {
   console.log('POST /api/questions called with:', req.body);
@@ -942,7 +1004,6 @@ app.post('/api/questions', async (req, res) => {
     res.status(400).json({ error: 'Error saving question', details: err.message });
   }
 });
-
 // Update a question
 app.put('/api/questions/:id', async (req, res) => {
   const { id } = req.params;
@@ -963,7 +1024,6 @@ app.put('/api/questions/:id', async (req, res) => {
     res.status(400).json({ error: 'Error updating question', details: err.message });
   }
 });
-
 // Delete a question
 app.delete('/api/questions/:id', async (req, res) => {
   const { id } = req.params;
@@ -984,7 +1044,6 @@ app.delete('/api/questions/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting question', details: err.message });
   }
 });
-
 // ===== STORY MANAGEMENT ENDPOINTS =====
 // Get all stories
 app.get('/api/stories', async (req, res) => {
@@ -999,7 +1058,6 @@ app.get('/api/stories', async (req, res) => {
     res.status(500).json({ error: 'Error fetching stories' });
   }
 });
-
 // Get a specific story by ID
 app.get('/api/stories/:id', async (req, res) => {
   const { id } = req.params;
@@ -1021,7 +1079,6 @@ app.get('/api/stories/:id', async (req, res) => {
     res.status(500).json({ error: 'Error fetching story' });
   }
 });
-
 // Add a new story
 app.post('/api/stories', async (req, res) => {
   console.log('POST /api/stories called with:', req.body);
@@ -1039,7 +1096,6 @@ app.post('/api/stories', async (req, res) => {
     res.status(400).json({ error: 'Error saving story', details: err.message });
   }
 });
-
 // Update a story
 app.put('/api/stories/:id', async (req, res) => {
   const { id } = req.params;
@@ -1061,7 +1117,6 @@ app.put('/api/stories/:id', async (req, res) => {
     res.status(400).json({ error: 'Error updating story', details: err.message });
   }
 });
-
 // Delete a story
 app.delete('/api/stories/:id', async (req, res) => {
   const { id } = req.params;
@@ -1081,7 +1136,6 @@ app.delete('/api/stories/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting story' });
   }
 });
-
 // ===== GRAMMAR LESSON MANAGEMENT ENDPOINTS =====
 // Get all grammar lessons
 app.get('/api/grammar-lessons', async (req, res) => {
@@ -1100,7 +1154,6 @@ app.get('/api/grammar-lessons', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // Get a single grammar lesson
 app.get('/api/grammar-lessons/:id', async (req, res) => {
   try {
@@ -1113,7 +1166,6 @@ app.get('/api/grammar-lessons/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // Create a new grammar lesson
 app.post('/api/grammar-lessons', async (req, res) => {
   try {
@@ -1124,7 +1176,6 @@ app.post('/api/grammar-lessons', async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-
 // Update a grammar lesson
 app.put('/api/grammar-lessons/:id', async (req, res) => {
   try {
@@ -1140,7 +1191,6 @@ app.put('/api/grammar-lessons/:id', async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-
 // Delete a grammar lesson
 app.delete('/api/grammar-lessons/:id', async (req, res) => {
   try {
@@ -1151,18 +1201,15 @@ app.delete('/api/grammar-lessons/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // ===== ADMIN FORM ENDPOINTS =====
 // Serve the question form
 app.get('/admin/question-form', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-question-form.html'));
 });
-
 // Serve the story form
 app.get('/admin/story-form', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-story-form.html'));
 });
-
 // Serve the story form with edit parameter
 app.get('/admin/edit-story', (req, res) => {
   const { id } = req.query;
@@ -1172,25 +1219,21 @@ app.get('/admin/edit-story', (req, res) => {
     res.redirect('/admin/story-form');
   }
 });
-
 // ===== HEALTH CHECK ENDPOINT =====
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
-
 // ===== ERROR HANDLING =====
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error', details: err.message });
 });
-
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
-
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
@@ -1205,7 +1248,6 @@ app.listen(PORT, () => {
   console.log(`CSV Export: http://localhost:${PORT}/api/words/export/csv`);
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
-  console.log(`CSV Import: http://localhost:${PORT}/api/words/import/csv`);
-  console.log(`JSON Import: http://localhost:${PORT}/api/words/import/json`);
-  console.log(`Excel Import: http://localhost:${PORT}/api/words/import/excel`);
+  console.log(`Words without examples: http://localhost:${PORT}/api/words/empty-examples`);
+  console.log(`Export words without examples: http://localhost:${PORT}/api/words/export/empty-examples`);
 });
