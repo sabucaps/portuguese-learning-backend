@@ -1,4 +1,3 @@
-// backend/models/Test.js
 const mongoose = require('mongoose');
 
 const testSchema = new mongoose.Schema({
@@ -19,8 +18,9 @@ const testSchema = new mongoose.Schema({
   },
   questionCount: {
     type: Number,
-    required: true,
-    min: 1
+    default: function() {
+      return this.questions.length;
+    }
   },
   estimatedTime: {
     type: Number,
@@ -55,6 +55,8 @@ const testSchema = new mongoose.Schema({
 });
 
 testSchema.pre('save', function(next) {
+  // Automatically set questionCount based on questions array length
+  this.questionCount = this.questions.length;
   this.updatedAt = new Date();
   next();
 });
