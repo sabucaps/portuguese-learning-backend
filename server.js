@@ -373,26 +373,6 @@ app.delete('/api/words/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting word', details: err.message });
   }
 });
-// Get words with empty examples
-app.get('/api/words/empty-examples', async (req, res) => {
-  console.log('GET /api/words/empty-examples called');
-  
-  try {
-    const words = await Word.find({
-      $or: [
-        { examples: { $exists: false } },
-        { examples: { $eq: [] } }
-      ]
-    });
-    
-    console.log(`Found ${words.length} words with empty examples`);
-    res.header('Content-Type', 'application/json; charset=utf-8');
-    res.json(words);
-  } catch (err) {
-    console.error('Error fetching words with empty examples:', err);
-    res.status(500).json({ error: 'Error fetching words with empty examples' });
-  }
-});
 // ===== EXPORT ENDPOINTS =====
 // Improved CSV Export
 app.get('/api/words/export/csv', async (req, res) => {
@@ -586,76 +566,6 @@ app.get('/api/words/export/excel', async (req, res) => {
   } catch (error) {
     console.error('Error exporting words to Excel:', error);
     res.status(500).json({ error: 'Error exporting words to Excel', details: error.message });
-  }
-});
-// Export words without examples as CSV
-app.get('/api/words/export/empty-examples', async (req, res) => {
-  console.log('GET /api/words/export/empty-examples called');
-  
-  try {
-    // Find words with empty examples
-    const words = await Word.find({
-      $or: [
-        { examples: { $exists: false } },
-        { examples: { $eq: [] } }
-      ]
-    }).sort({ portuguese: 1 });
-    
-    if (words.length === 0) {
-      return res.status(404).json({ error: 'No words without examples found' });
-    }
-    
-    // Create CSV file path
-    const filePath = path.join(__dirname, 'exports', 'words_without_examples.csv');
-    
-    // Ensure exports directory exists
-    const exportsDir = path.join(__dirname, 'exports');
-    if (!fs.existsSync(exportsDir)) {
-      fs.mkdirSync(exportsDir, { recursive: true });
-    }
-    
-    // Create CSV writer
-    const csvWriter = createCsvWriter({
-      path: filePath,
-      header: [
-        { id: 'portuguese', title: 'Portuguese' },
-        { id: 'english', title: 'English Translation' },
-        { id: 'group', title: 'Category' },
-        { id: 'difficulty', title: 'Difficulty Level' }
-      ],
-      alwaysQuote: true,
-      encoding: 'utf8'
-    });
-    
-    // Prepare data for CSV
-    const csvData = words.map(word => ({
-      portuguese: word.portuguese || '',
-      english: word.english || '',
-      group: word.group || 'Uncategorized',
-      difficulty: word.difficulty || 'Beginner'
-    }));
-    
-    // Write words to CSV
-    await csvWriter.writeRecords(csvData);
-    
-    console.log(`CSV file created at: ${filePath}`);
-    
-    // Send the file as download
-    const date = new Date().toISOString().split('T')[0];
-    res.download(filePath, `words_without_examples_${date}.csv`, (err) => {
-      if (err) {
-        console.error('Error downloading file:', err);
-        res.status(500).json({ error: 'Error downloading file' });
-      } else {
-        // Delete the file after download
-        fs.unlink(filePath, (unlinkErr) => {
-          if (unlinkErr) console.error('Error deleting file:', unlinkErr);
-        });
-      }
-    });
-  } catch (error) {
-    console.error('Error exporting words without examples:', error);
-    res.status(500).json({ error: 'Error exporting words without examples', details: error.message });
   }
 });
 // ===== IMPORT ENDPOINTS =====
@@ -1248,6 +1158,4 @@ app.listen(PORT, () => {
   console.log(`CSV Export: http://localhost:${PORT}/api/words/export/csv`);
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
-  console.log(`Words without examples: http://localhost:${PORT}/api/words/empty-examples`);
-  console.log(`Export words without examples: http://localhost:${PORT}/api/words/export/empty-examples`);
 });
