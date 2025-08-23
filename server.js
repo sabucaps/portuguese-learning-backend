@@ -16,7 +16,7 @@ const Word = require('./models/Word');
 const Question = require('./models/Question');
 const Story = require('./models/Story');
 const GrammarLesson = require('./models/GrammarLesson');
-const Test = require('./models/Test'); // ✅ ADD THIS LINE
+const Test = require('./models/Test'); // Added Test model import
 // Initialize Express app
 const app = express();
 // Middleware
@@ -372,109 +372,6 @@ app.delete('/api/words/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting word:', err);
     res.status(500).json({ error: 'Error deleting word', details: err.message });
-  }
-});
-// ===== STORY TESTS ENDPOINTS =====
-// Serve the story test form
-app.get('/admin/story-test-form', (req, res) => {
-  console.log('GET /admin/story-test-form called');
-  res.sendFile(path.join(__dirname, 'admin-story-test-form.html'));
-});
-
-// Get tests by story ID
-app.get('/api/tests/story/:storyId', async (req, res) => {
-  const { storyId } = req.params;
-  console.log(`GET /api/tests/story/${storyId} called`);
-  
-  try {
-    const tests = await Test.find({ storyId }).populate('storyId', 'title');
-    console.log(`Found ${tests.length} tests for story ${storyId}`);
-    res.json(tests);
-  } catch (error) {
-    console.error('Error fetching tests by story ID:', error);
-    res.status(500).json({ error: 'Error fetching tests' });
-  }
-});
-
-// Create a new test
-app.post('/api/tests', async (req, res) => {
-  console.log('POST /api/tests called with:', req.body);
-  
-  try {
-    const newTest = new Test(req.body);
-    console.log('Creating new test:', newTest);
-    
-    const test = await newTest.save();
-    
-    // Populate story title for the response
-    await test.populate('storyId', 'title');
-    
-    console.log('Test saved successfully:', test);
-    res.status(201).json(test);
-  } catch (error) {
-    console.error('Error saving test:', error);
-    res.status(400).json({ error: 'Error saving test', details: error.message });
-  }
-});
-
-// Get a specific test by ID
-app.get('/api/tests/:id', async (req, res) => {
-  const { id } = req.params;
-  console.log(`GET /api/tests/${id} called`);
-  
-  try {
-    const test = await Test.findById(id).populate('storyId', 'title');
-    
-    if (!test) {
-      console.log(`Test not found with ID: ${id}`);
-      return res.status(404).json({ error: 'Test not found' });
-    }
-    
-    console.log(`Found test: ${test.title}`);
-    res.json(test);
-  } catch (error) {
-    console.error('Error fetching test:', error);
-    res.status(500).json({ error: 'Error fetching test' });
-  }
-});
-
-// Update a test
-app.put('/api/tests/:id', async (req, res) => {
-  const { id } = req.params;
-  console.log(`PUT /api/tests/${id} called with:`, req.body);
-  
-  try {
-    const test = await Test.findByIdAndUpdate(id, req.body, { new: true });
-    
-    if (!test) {
-      return res.status(404).json({ error: 'Test not found' });
-    }
-    
-    console.log('Test updated successfully:', test);
-    res.json(test);
-  } catch (error) {
-    console.error('Error updating test:', error);
-    res.status(400).json({ error: 'Error updating test', details: error.message });
-  }
-});
-
-// Delete a test
-app.delete('/api/tests/:id', async (req, res) => {
-  const { id } = req.params;
-  console.log(`DELETE /api/tests/${id} called`);
-  
-  try {
-    const test = await Test.findByIdAndDelete(id);
-    
-    if (!test) {
-      return res.status(404).json({ error: 'Test not found' });
-    }
-    
-    console.log('Test deleted successfully:', test);
-    res.json({ message: 'Test deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting test:', error);
-    res.status(500).json({ error: 'Error deleting test' });
   }
 });
 // ===== EXPORT ENDPOINTS =====
@@ -1215,15 +1112,123 @@ app.delete('/api/grammar-lessons/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+// ===== TEST MANAGEMENT ENDPOINTS =====
+// Get all tests
+app.get('/api/tests', async (req, res) => {
+  console.log('GET /api/tests called');
+  try {
+    const tests = await Test.find().populate('storyId', 'title');
+    console.log(`Found ${tests.length} tests`);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json(tests);
+  } catch (error) {
+    console.error('Error fetching tests:', error);
+    res.status(500).json({ error: 'Error fetching tests' });
+  }
+});
+// Get a single test by ID
+app.get('/api/tests/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log(`GET /api/tests/${id} called`);
+  
+  try {
+    const test = await Test.findById(id).populate('storyId', 'title');
+    
+    if (!test) {
+      console.log(`Test not found with ID: ${id}`);
+      return res.status(404).json({ error: 'Test not found' });
+    }
+    
+    console.log(`Found test: ${test.title}`);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json(test);
+  } catch (error) {
+    console.error('Error fetching test:', error);
+    res.status(500).json({ error: 'Error fetching test' });
+  }
+});
+// Create a new test
+app.post('/api/tests', async (req, res) => {
+  console.log('POST /api/tests called with:', req.body);
+  
+  try {
+    const newTest = new Test(req.body);
+    console.log('Creating new test:', newTest);
+    
+    const test = await newTest.save();
+    // Populate the story title for the response
+    await test.populate('storyId', 'title');
+    
+    console.log('Test saved successfully:', test);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.status(201).json(test);
+  } catch (error) {
+    console.error('Error creating test:', error);
+    res.status(400).json({ error: 'Error creating test', details: error.message });
+  }
+});
+// Update a test
+app.put('/api/tests/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log(`PUT /api/tests/${id} called with:`, req.body);
+  
+  try {
+    const test = await Test.findByIdAndUpdate(id, req.body, { new: true }).populate('storyId', 'title');
+    
+    if (!test) {
+      console.log(`Test not found with ID: ${id}`);
+      return res.status(404).json({ error: 'Test not found' });
+    }
+    
+    console.log('Test updated successfully:', test);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json(test);
+  } catch (error) {
+    console.error('Error updating test:', error);
+    res.status(400).json({ error: 'Error updating test', details: error.message });
+  }
+});
+// Delete a test
+app.delete('/api/tests/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log(`DELETE /api/tests/${id} called`);
+  
+  try {
+    const test = await Test.findByIdAndDelete(id);
+    
+    if (!test) {
+      return res.status(404).json({ error: 'Test not found' });
+    }
+    
+    console.log('Test deleted successfully:', test);
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json({ message: 'Test deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting test:', error);
+    res.status(500).json({ error: 'Error deleting test' });
+  }
+});
+// Get tests by story ID
+app.get('/api/tests/story/:storyId', async (req, res) => {
+  const { storyId } = req.params;
+  console.log(`GET /api/tests/story/${storyId} called`);
+  
+  try {
+    const tests = await Test.find({ storyId }).populate('storyId', 'title');
+    console.log(`Found ${tests.length} tests for story ${storyId}`);
+    res.json(tests);
+  } catch (error) {
+    console.error('Error fetching tests by story ID:', error);
+    res.status(500).json({ error: 'Error fetching tests' });
+  }
+});
 // ===== ADMIN FORM ENDPOINTS =====
 // Serve the question form
 app.get('/admin/question-form', (req, res) => {
-  console.log('GET /admin/question-form called');
   res.sendFile(path.join(__dirname, 'admin-question-form.html'));
 });
 // Serve the story form
 app.get('/admin/story-form', (req, res) => {
-  console.log('GET /admin/story-form called');
   res.sendFile(path.join(__dirname, 'admin-story-form.html'));
 });
 // Serve the story form with edit parameter
@@ -1238,7 +1243,6 @@ app.get('/admin/edit-story', (req, res) => {
 // ===== HEALTH CHECK ENDPOINT =====
 // Health check endpoint
 app.get('/health', (req, res) => {
-  console.log('GET /health called');
   res.json({ status: 'OK', message: 'Server is running' });
 });
 // ===== ERROR HANDLING =====
@@ -1249,7 +1253,6 @@ app.use((err, req, res, next) => {
 });
 // 404 handler
 app.use((req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ error: 'Route not found' });
 });
 // Start server
@@ -1261,10 +1264,9 @@ app.listen(PORT, () => {
   console.log(`Story management: http://localhost:${PORT}/api/stories`);
   console.log(`Groups management: http://localhost:${PORT}/api/groups`);
   console.log(`Grammar lessons: http://localhost:${PORT}/api/grammar-lessons`);
-  console.log(`Story tests: http://localhost:${PORT}/api/tests/story/:storyId`);
+  console.log(`Test management: http://localhost:${PORT}/api/tests`);
   console.log(`Debug endpoint: http://localhost:${PORT}/api/debug`);
   console.log(`Admin form: http://localhost:${PORT}/admin/question-form`);
-  console.log(`Story test form: http://localhost:${PORT}/admin/story-test-form`);
   console.log(`CSV Export: http://localhost:${PORT}/api/words/export/csv`);
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
