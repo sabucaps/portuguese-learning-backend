@@ -373,51 +373,6 @@ app.delete('/api/words/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting word', details: err.message });
   }
 });
-app.get('/admin/story-test-form', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin-story-test-form.html'));
-});
-
-// Get tests by story ID
-app.get('/api/tests/story/:storyId', async (req, res) => {
-  const { storyId } = req.params;
-  
-  try {
-    const tests = await Test.find({ storyId });
-    res.json(tests);
-  } catch (error) {
-    console.error('Error fetching tests by story ID:', error);
-    res.status(500).json({ error: 'Error fetching tests' });
-  }
-});
-// Add this endpoint with your other test endpoints
-app.get('/api/tests/story/:storyId', async (req, res) => {
-  const { storyId } = req.params;
-  
-  try {
-    const tests = await Test.find({ storyId }).populate('storyId', 'title');
-    res.json(tests);
-  } catch (error) {
-    console.error('Error fetching tests by story ID:', error);
-    res.status(500).json({ error: 'Error fetching tests' });
-  }
-});
-
-// Update the test creation endpoint to handle story tests
-app.post('/api/tests', async (req, res) => {
-  try {
-    const newTest = new Test(req.body);
-    const test = await newTest.save();
-    
-    // Populate story title for the response
-    await test.populate('storyId', 'title');
-    
-    res.status(201).json(test);
-  } catch (error) {
-    console.error('Error saving test:', error);
-    res.status(400).json({ error: 'Error saving test', details: error.message });
-  }
-});
-
 // ===== EXPORT ENDPOINTS =====
 // Improved CSV Export
 app.get('/api/words/export/csv', async (req, res) => {
