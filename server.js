@@ -1048,7 +1048,7 @@ app.delete('/api/stories/:id', async (req, res) => {
   }
 });
 // ===== GRAMMAR LESSON MANAGEMENT ENDPOINTS =====
-/ Get all grammar lessons
+// Get all grammar lessons
 app.get('/api/grammar-lessons', async (req, res) => {
   try {
     const lessons = await GrammarLesson.find().sort({ order: 1 });
@@ -1365,3 +1365,4 @@ app.listen(PORT, () => {
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
 });
+
