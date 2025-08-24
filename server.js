@@ -1048,68 +1048,79 @@ app.delete('/api/stories/:id', async (req, res) => {
   }
 });
 // ===== GRAMMAR LESSON MANAGEMENT ENDPOINTS =====
-// Get all grammar lessons
+/ Get all grammar lessons
 app.get('/api/grammar-lessons', async (req, res) => {
   try {
-    const { difficulty, category } = req.query;
-    let filter = {};
-    if (difficulty) filter.difficulty = difficulty;
-    if (category) filter.category = category;
-    
-    const lessons = await GrammarLesson.find(filter)
-      .sort({ order: 1 })
-      .populate('relatedWords', 'portuguese english');
-    
+    const lessons = await GrammarLesson.find().sort({ order: 1 });
     res.json(lessons);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching grammar lessons:', error);
+    res.status(500).json({ error: 'Error fetching grammar lessons' });
   }
 });
-// Get a single grammar lesson
+
+// Get a specific grammar lesson by ID
 app.get('/api/grammar-lessons/:id', async (req, res) => {
   try {
     const lesson = await GrammarLesson.findById(req.params.id)
-      .populate('relatedWords', 'portuguese english group examples');
+      .populate('relatedWords', 'portuguese english');
     
-    if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
+    if (!lesson) {
+      return res.status(404).json({ error: 'Grammar lesson not found' });
+    }
+    
     res.json(lesson);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching grammar lesson:', error);
+    res.status(500).json({ error: 'Error fetching grammar lesson' });
   }
 });
+
 // Create a new grammar lesson
 app.post('/api/grammar-lessons', async (req, res) => {
   try {
-    const lesson = new GrammarLesson(req.body);
-    const newLesson = await lesson.save();
-    res.status(201).json(newLesson);
+    const newLesson = new GrammarLesson(req.body);
+    const savedLesson = await newLesson.save();
+    res.status(201).json(savedLesson);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Error creating grammar lesson:', error);
+    res.status(400).json({ error: 'Error creating grammar lesson' });
   }
 });
+
 // Update a grammar lesson
 app.put('/api/grammar-lessons/:id', async (req, res) => {
   try {
-    const lesson = await GrammarLesson.findByIdAndUpdate(
+    const updatedLesson = await GrammarLesson.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: Date.now() },
+      req.body,
       { new: true }
     );
     
-    if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
-    res.json(lesson);
+    if (!updatedLesson) {
+      return res.status(404).json({ error: 'Grammar lesson not found' });
+    }
+    
+    res.json(updatedLesson);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Error updating grammar lesson:', error);
+    res.status(400).json({ error: 'Error updating grammar lesson' });
   }
 });
+
 // Delete a grammar lesson
 app.delete('/api/grammar-lessons/:id', async (req, res) => {
   try {
-    const lesson = await GrammarLesson.findByIdAndDelete(req.params.id);
-    if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
-    res.json({ message: 'Lesson deleted successfully' });
+    const deletedLesson = await GrammarLesson.findByIdAndDelete(req.params.id);
+    
+    if (!deletedLesson) {
+      return res.status(404).json({ error: 'Grammar lesson not found' });
+    }
+    
+    res.json({ message: 'Grammar lesson deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error deleting grammar lesson:', error);
+    res.status(500).json({ error: 'Error deleting grammar lesson' });
   }
 });
 // ===== TEST MANAGEMENT ENDPOINTS =====
@@ -1222,6 +1233,89 @@ app.get('/api/tests/story/:storyId', async (req, res) => {
     res.status(500).json({ error: 'Error fetching tests' });
   }
 });
+
+const Conjugation = require('./models/Conjugation');
+
+// Get all conjugations
+app.get('/api/conjugations', async (req, res) => {
+  try {
+    const conjugations = await Conjugation.find().sort({ verb: 1 });
+    res.json(conjugations);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching conjugations' });
+  }
+});
+
+// Get a single conjugation
+app.get('/api/conjugations/:id', async (req, res) => {
+  try {
+    const conjugation = await Conjugation.findById(req.params.id);
+    if (!conjugation) {
+      return res.status(404).json({ error: 'Conjugation not found' });
+    }
+    res.json(conjugation);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching conjugation' });
+  }
+});
+
+// Create a new conjugation
+app.post('/api/conjugations', async (req, res) => {
+  try {
+    const conjugation = new Conjugation(req.body);
+    await conjugation.save();
+    res.status(201).json(conjugation);
+  } catch (error) {
+    res.status(400).json({ error: 'Error creating conjugation', details: error.message });
+  }
+});
+
+// Update a conjugation
+app.put('/api/conjugations/:id', async (req, res) => {
+  try {
+    const conjugation = await Conjugation.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    if (!conjugation) {
+      return res.status(404).json({ error: 'Conjugation not found' });
+    }
+    res.json(conjugation);
+  } catch (error) {
+    res.status(400).json({ error: 'Error updating conjugation', details: error.message });
+  }
+});
+
+// Delete a conjugation
+app.delete('/api/conjugations/:id', async (req, res) => {
+  try {
+    const conjugation = await Conjugation.findByIdAndDelete(req.params.id);
+    if (!conjugation) {
+      return res.status(404).json({ error: 'Conjugation not found' });
+    }
+    res.json({ message: 'Conjugation deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error deleting conjugation' });
+  }
+});
+
+// Search conjugations
+app.get('/api/conjugations/search/:term', async (req, res) => {
+  try {
+    const term = req.params.term.toLowerCase();
+    const conjugations = await Conjugation.find({
+      $or: [
+        { verb: { $regex: term, $options: 'i' } },
+        { english: { $regex: term, $options: 'i' } }
+      ]
+    });
+    res.json(conjugations);
+  } catch (error) {
+    res.status(500).json({ error: 'Error searching conjugations' });
+  }
+});
+
 // ===== ADMIN FORM ENDPOINTS =====
 // Serve the question form
 app.get('/admin/question-form', (req, res) => {
