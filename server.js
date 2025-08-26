@@ -1315,7 +1315,16 @@ app.get('/api/conjugations/search/:term', async (req, res) => {
     res.status(500).json({ error: 'Error searching conjugations' });
   }
 });
-
+// GET /api/tests/type/:type
+app.get('/api/tests/type/:type', async (req, res) => {
+  try {
+    const type = decodeURIComponent(req.params.type);
+    const tests = await Test.find({ type });
+    res.json(tests);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch tests by type' });
+  }
+});
 // ===== ADMIN FORM ENDPOINTS =====
 // Serve the question form
 app.get('/admin/question-form', (req, res) => {
@@ -1365,4 +1374,3 @@ app.listen(PORT, () => {
   console.log(`JSON Export: http://localhost:${PORT}/api/words/export/json`);
   console.log(`Excel Export: http://localhost:${PORT}/api/words/export/excel`);
 });
-
