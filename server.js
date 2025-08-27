@@ -34,6 +34,20 @@ const Conjugation = require('./models/Conjugation');
 // Initialize Express app
 const app = express();
 
+// Authentication middleware
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
+  
+  try {
+    const verified = jwt.verify(token, JWT_SECRET);
+    req.user = verified;
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid or expired token.' });
+  }
+};
+
 // Configure CORS
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
@@ -763,5 +777,3 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
-
-
