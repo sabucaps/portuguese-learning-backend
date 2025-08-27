@@ -36,7 +36,7 @@ const authRoutes = require('./routes/auth');
 // Initialize Express app
 const app = express();
 
-// Authentication middleware (used in server.js routes)
+// Authentication middleware (used for /api/words, /api/tests, etc.)
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
