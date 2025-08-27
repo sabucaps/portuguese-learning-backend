@@ -1,6 +1,14 @@
 // server.js
-const dotenv = require('dotenv'); // ✅ Add this line FIRST
-dotenv.config(); // ✅ Now this works
+const dotenv = require('dotenv');
+dotenv.config();
+
+// Validate JWT_SECRET
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('❌ JWT_SECRET is not set in .env file');
+  process.exit(1);
+}
+
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const express = require('express');
@@ -13,15 +21,6 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
-const authRoutes = require('./routes/auth');
-
-// Load environment variables
-// Validate JWT_SECRET
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error('❌ JWT_SECRET is not set in .env file');
-  process.exit(1);
-}
 
 // Import models
 const Word = require('./models/Word');
@@ -31,10 +30,13 @@ const GrammarLesson = require('./models/GrammarLesson');
 const Test = require('./models/Test');
 const Conjugation = require('./models/Conjugation');
 
+// Import auth routes
+const authRoutes = require('./routes/auth');
+
 // Initialize Express app
 const app = express();
 
-// Authentication middleware
+// Authentication middleware (used in server.js routes)
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
@@ -58,7 +60,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
@@ -67,7 +69,7 @@ app.use((req, res, next) => {
 // Serve static files
 app.use('/uploads', express.static('uploads'));
 
-// Multer setup for file uploads
+// Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
@@ -116,7 +118,6 @@ app.post('/api/words', authMiddleware, async (req, res) => {
     if (!portuguese || !english) {
       return res.status(400).json({ error: 'Portuguese and English are required' });
     }
-
     const word = new Word({ portuguese, english, group, examples, imageUrl });
     await word.save();
     res.status(201).json(word);
@@ -129,15 +130,11 @@ app.post('/api/words', authMiddleware, async (req, res) => {
 app.put('/api/words/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { portuguese, english, group, examples, imageUrl } = req.body;
-    
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid word ID' });
     }
-
-    const word = await Word.findByIdAndUpdate(id, { portuguese, english, group, examples, imageUrl }, { new: true });
+    const word = await Word.findByIdAndUpdate(id, req.body, { new: true });
     if (!word) return res.status(404).json({ error: 'Word not found' });
-    
     res.json(word);
   } catch (error) {
     console.error('Error updating word:', error);
@@ -148,14 +145,11 @@ app.put('/api/words/:id', authMiddleware, async (req, res) => {
 app.delete('/api/words/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid word ID' });
     }
-
     const word = await Word.findByIdAndDelete(id);
     if (!word) return res.status(404).json({ error: 'Word not found' });
-    
     res.json({ message: 'Word deleted successfully' });
   } catch (error) {
     console.error('Error deleting word:', error);
@@ -181,13 +175,11 @@ app.post('/api/groups', authMiddleware, async (req, res) => {
     if (!name || name.trim() === '') {
       return res.status(400).json({ error: 'Group name is required' });
     }
-
     const groupName = name.trim();
     const existingWord = await Word.findOne({ group: groupName });
     if (existingWord) {
       return res.status(400).json({ error: 'Group with this name already exists' });
     }
-
     res.json({ message: 'Group created successfully', name: groupName });
   } catch (error) {
     console.error('Error adding group:', error);
@@ -199,30 +191,13 @@ app.put('/api/groups/:oldName', authMiddleware, async (req, res) => {
   try {
     const { oldName } = req.params;
     const { name: newName } = req.body;
-
-    if (!newName) {
-      return res.status(400).json({ error: 'New group name is required' });
-    }
-    if (newName.trim() === '') {
-      return res.status(400).json({ error: 'New group name cannot be empty' });
-    }
-    if (oldName === newName) {
-      return res.status(400).json({ error: 'New group name must be different' });
-    }
-    if (oldName === 'Other') {
-      return res.status(400).json({ error: 'Cannot rename the default group' });
-    }
-
+    if (!newName) return res.status(400).json({ error: 'New group name is required' });
+    if (newName.trim() === '') return res.status(400).json({ error: 'New group name cannot be empty' });
+    if (oldName === newName) return res.status(400).json({ error: 'New group name must be different' });
+    if (oldName === 'Other') return res.status(400).json({ error: 'Cannot rename the default group' });
     const existingWord = await Word.findOne({ group: newName.trim() });
-    if (existingWord) {
-      return res.status(400).json({ error: 'Group with this name already exists' });
-    }
-
-    const result = await Word.updateMany(
-      { group: oldName },
-      { $set: { group: newName.trim() } }
-    );
-
+    if (existingWord) return res.status(400).json({ error: 'Group with this name already exists' });
+    const result = await Word.updateMany({ group: oldName }, { $set: { group: newName.trim() } });
     res.json({
       message: 'Group updated successfully',
       oldName,
@@ -536,18 +511,15 @@ app.get('/api/conjugations/search/:term', async (req, res) => {
 // ===== IMPORT/EXPORT ENDPOINTS =====
 app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  
   const filePath = req.file.path;
   const skipExisting = req.body.skipExisting === 'true';
   const results = [];
-
   fs.createReadStream(filePath)
     .pipe(csv())
     .on('data', (data) => results.push(data))
     .on('end', async () => {
       let imported = 0;
       let skipped = 0;
-
       for (const row of results) {
         try {
           if (skipExisting) {
@@ -557,7 +529,6 @@ app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
               continue;
             }
           }
-
           const word = new Word({
             portuguese: row.portuguese,
             english: row.english,
@@ -571,7 +542,6 @@ app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
           console.error('Error importing row:', error);
         }
       }
-
       fs.unlinkSync(filePath);
       res.json({ message: 'CSV import completed', imported, skipped });
     });
@@ -579,19 +549,15 @@ app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
 
 app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  
   const filePath = req.file.path;
   const skipExisting = req.body.skipExisting === 'true';
-
   try {
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     if (!Array.isArray(data)) {
       return res.status(400).json({ error: 'JSON file must contain an array' });
     }
-
     let imported = 0;
     let skipped = 0;
-
     for (const item of data) {
       if (skipExisting) {
         const existing = await Word.findOne({ portuguese: item.portuguese });
@@ -600,7 +566,6 @@ app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
           continue;
         }
       }
-
       const word = new Word({
         portuguese: item.portuguese,
         english: item.english,
@@ -611,7 +576,6 @@ app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
       await word.save();
       imported++;
     }
-
     fs.unlinkSync(filePath);
     res.json({ message: 'JSON import completed', imported, skipped });
   } catch (error) {
@@ -622,17 +586,14 @@ app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
 
 app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  
   const filePath = req.file.path;
   const workbook = new ExcelJS.Workbook();
-  
   try {
     await workbook.xlsx.readFile(filePath);
     const worksheet = workbook.getWorksheet(1);
     const data = [];
-
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header
+      if (rowNumber === 1) return;
       data.push({
         portuguese: row.getCell(1).value,
         english: row.getCell(2).value,
@@ -641,14 +602,12 @@ app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
         imageUrl: row.getCell(5).value
       });
     });
-
     let imported = 0;
     for (const item of data) {
       const word = new Word(item);
       await word.save();
       imported++;
     }
-
     fs.unlinkSync(filePath);
     res.json({ message: 'Excel import completed', imported });
   } catch (error) {
@@ -670,7 +629,6 @@ app.get('/api/words/export/csv', async (req, res) => {
         { id: 'imageUrl', title: 'Image URL' }
       ]
     });
-
     const records = words.map(word => ({
       portuguese: word.portuguese,
       english: word.english,
@@ -678,11 +636,8 @@ app.get('/api/words/export/csv', async (req, res) => {
       examples: word.examples?.join(';') || '',
       imageUrl: word.imageUrl || ''
     }));
-
     await csvWriter.writeRecords(records);
-    res.download('words-export.csv', () => {
-      fs.unlinkSync('words-export.csv');
-    });
+    res.download('words-export.csv', () => fs.unlinkSync('words-export.csv'));
   } catch (error) {
     res.status(500).json({ error: 'Error exporting CSV' });
   }
@@ -693,9 +648,7 @@ app.get('/api/words/export/json', async (req, res) => {
     const words = await Word.find();
     const filename = 'words-export.json';
     fs.writeFileSync(filename, JSON.stringify(words, null, 2));
-    res.download(filename, () => {
-      fs.unlinkSync(filename);
-    });
+    res.download(filename, () => fs.unlinkSync(filename));
   } catch (error) {
     res.status(500).json({ error: 'Error exporting JSON' });
   }
@@ -706,7 +659,6 @@ app.get('/api/words/export/excel', async (req, res) => {
     const words = await Word.find();
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Words');
-
     worksheet.columns = [
       { header: 'Portuguese', key: 'portuguese', width: 20 },
       { header: 'English', key: 'english', width: 20 },
@@ -714,7 +666,6 @@ app.get('/api/words/export/excel', async (req, res) => {
       { header: 'Examples', key: 'examples', width: 30 },
       { header: 'Image URL', key: 'imageUrl', width: 30 }
     ];
-
     words.forEach(word => {
       worksheet.addRow({
         portuguese: word.portuguese,
@@ -724,7 +675,6 @@ app.get('/api/words/export/excel', async (req, res) => {
         imageUrl: word.imageUrl
       });
     });
-
     const buffer = await workbook.xlsx.writeBuffer();
     res.setHeader('Content-Disposition', 'attachment; filename=words-export.xlsx');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
