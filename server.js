@@ -1,5 +1,6 @@
 // server.js
-require('dotenv').config();
+const dotenv = require('dotenv'); // ✅ Add this line FIRST
+dotenv.config(); // ✅ Now this works
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const express = require('express');
@@ -15,8 +16,6 @@ const XLSX = require('xlsx');
 const authRoutes = require('./routes/auth');
 
 // Load environment variables
-dotenv.config();
-
 // Validate JWT_SECRET
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -778,3 +777,4 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
+
