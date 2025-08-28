@@ -44,7 +44,7 @@ const authMiddleware = (req, res, next) => {
   
   try {
     const verified = jwt.verify(token, JWT_SECRET);
-    console.log('✅ JWT Verified:', verified); // ✅ Log the decoded token
+    console.log('✅ JWT Verified:', verified);
     req.user = verified;
     next();
   } catch (err) {
@@ -259,12 +259,67 @@ app.delete('/api/questions/:id', authMiddleware, async (req, res) => {
 });
 
 // ===== STORY MANAGEMENT ENDPOINTS =====
+app.get('/api/stories', async (req, res) => {
+  try {
+    const stories = await Story.find().sort({ title: 1 });
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    res.json(stories);
+  } catch (error) {
+    console.error('Error fetching stories:', error);
+    res.status(500).json({ error: 'Error fetching stories' });
+  }
+});
+
+app.get('/api/stories/:id', async (req, res) => {
+  try {
+    const story = await Story.findById(req.params.id);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json(story);
+  } catch (error) {
+    console.error('Error fetching story:', error);
+    res.status(500).json({ error: 'Error fetching story' });
+  }
+});
+
+app.post('/api/stories', authMiddleware, async (req, res) => {
+  try {
+    const story = new Story(req.body);
+    await story.save();
+    res.status(201).json(story);
+  } catch (err) {
+    console.error('Error saving story:', err);
+    res.status(400).json({ error: 'Error saving story' });
+  }
+});
+
+app.put('/api/stories/:id', authMiddleware, async (req, res) => {
+  try {
+    const story = await Story.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json(story);
+  } catch (err) {
+    console.error('Error updating story:', err);
+    res.status(400).json({ error: 'Error updating story' });
+  }
+});
+
+app.delete('/api/stories/:id', authMiddleware, async (req, res) => {
+  try {
+    const story = await Story.findByIdAndDelete(req.params.id);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json({ message: 'Story deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting story:', err);
+    res.status(500).json({ error: 'Error deleting story' });
+  }
+});
+
+// ===== SAVED STORIES ENDPOINTS =====
 app.post('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const { storyId } = req.body;
     const userId = req.user.id;
 
-    // ✅ Skip ObjectId validation if your user.id is a string
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -281,36 +336,25 @@ app.post('/api/saved-stories', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/saved-stories
 app.get('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log('🔐 Incoming /api/saved-stories');
-    console.log('👤 req.user.id:', userId);
-    console.log('🆔 typeof userId:', typeof userId);
 
-    // ✅ Validate ID format
-    if (!userId || typeof userId !== 'string') {
-      return res.status(400).json({ error: 'Invalid user ID format' });
-    }
-
+    // ✅ Skip ObjectId validation — just use the ID
     const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
     
     if (!user) {
-      console.warn('❌ User not found in DB for ID:', userId);
-      // ✅ Return empty array instead of error
+      console.warn(`User not found for ID: ${userId}`);
       return res.json([]);
     }
 
-    console.log(`✅ Found user: ${user.name}, ${user.savedStories.length} saved stories`);
     res.json(user.savedStories || []);
   } catch (error) {
-    console.error('❌ Error in /api/saved-stories:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error fetching saved stories:', error);
+    res.status(500).json({ error: 'Error fetching saved stories' });
   }
 });
 
-// DELETE /api/saved-stories/:storyId
 app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
   try {
     const { storyId } = req.params;
@@ -523,75 +567,6 @@ app.get('/api/conjugations/search/:term', async (req, res) => {
     res.json(conjugations);
   } catch (error) {
     res.status(500).json({ error: 'Error searching conjugations' });
-  }
-});
-
-// ===== SAVED STORIES ENDPOINTS =====
-// POST /api/saved-stories - Save a story for the user
-app.post('/api/saved-stories', authMiddleware, async (req, res) => {
-  try {
-    const { storyId } = req.body;
-    const userId = req.user.id;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    if (!user.savedStories) user.savedStories = [];
-    if (!user.savedStories.includes(storyId)) {
-      user.savedStories.push(storyId);
-      await user.save();
-    }
-
-    res.json({ message: 'Story saved successfully' });
-  } catch (error) {
-    console.error('Error saving story:', error);
-    res.status(500).json({ error: 'Error saving story' });
-  }
-});
-
-// GET /api/saved-stories - Get all saved stories for the user
-app.get('/api/saved-stories', authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // ✅ Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    // ✅ Find user and populate saved stories
-    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
-    
-    // ✅ Handle missing user
-    if (!user) {
-      console.warn(`User not found for ID: ${userId}`);
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // ✅ Return empty array if no saved stories
-    res.json(user.savedStories || []);
-  } catch (error) {
-    console.error('Error fetching saved stories:', error);
-    res.status(500).json({ error: 'Error fetching saved stories', details: error.message });
-  }
-});
-
-// DELETE /api/saved-stories/:storyId - Remove a saved story
-app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
-  try {
-    const { storyId } = req.params;
-    const userId = req.user.id;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    user.savedStories = user.savedStories?.filter(id => id.toString() !== storyId);
-    await user.save();
-
-    res.json({ message: 'Story removed from saved' });
-  } catch (error) {
-    console.error('Error removing saved story:', error);
-    res.status(500).json({ error: 'Error removing saved story' });
   }
 });
 
@@ -814,6 +789,3 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
-
-
-
