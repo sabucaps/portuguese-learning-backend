@@ -44,9 +44,11 @@ const authMiddleware = (req, res, next) => {
   
   try {
     const verified = jwt.verify(token, JWT_SECRET);
+    console.log('✅ JWT Verified:', verified); // ✅ Log the decoded token
     req.user = verified;
     next();
   } catch (err) {
+    console.error('❌ Invalid or expired token:', err.message);
     return res.status(403).json({ error: 'Invalid or expired token.' });
   }
 };
@@ -536,13 +538,26 @@ app.post('/api/saved-stories', authMiddleware, async (req, res) => {
 app.get('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
-    if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // ✅ Find user and populate saved stories
+    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
+    
+    // ✅ Handle missing user
+    if (!user) {
+      console.warn(`User not found for ID: ${userId}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // ✅ Return empty array if no saved stories
     res.json(user.savedStories || []);
   } catch (error) {
     console.error('Error fetching saved stories:', error);
-    res.status(500).json({ error: 'Error fetching saved stories' });
+    res.status(500).json({ error: 'Error fetching saved stories', details: error.message });
   }
 });
 
@@ -784,3 +799,4 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
+
