@@ -29,6 +29,7 @@ const Story = require('./models/Story');
 const GrammarLesson = require('./models/GrammarLesson');
 const Test = require('./models/Test');
 const Conjugation = require('./models/Conjugation');
+const User = require('./models/User'); // ✅ Required for saved stories
 
 // Import auth routes
 const authRoutes = require('./routes/auth');
@@ -36,7 +37,7 @@ const authRoutes = require('./routes/auth');
 // Initialize Express app
 const app = express();
 
-// Authentication middleware (used for /api/words, /api/tests, etc.)
+// Authentication middleware
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
@@ -505,6 +506,62 @@ app.get('/api/conjugations/search/:term', async (req, res) => {
     res.json(conjugations);
   } catch (error) {
     res.status(500).json({ error: 'Error searching conjugations' });
+  }
+});
+
+// ===== SAVED STORIES ENDPOINTS =====
+// POST /api/saved-stories - Save a story for the user
+app.post('/api/saved-stories', authMiddleware, async (req, res) => {
+  try {
+    const { storyId } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.savedStories) user.savedStories = [];
+    if (!user.savedStories.includes(storyId)) {
+      user.savedStories.push(storyId);
+      await user.save();
+    }
+
+    res.json({ message: 'Story saved successfully' });
+  } catch (error) {
+    console.error('Error saving story:', error);
+    res.status(500).json({ error: 'Error saving story' });
+  }
+});
+
+// GET /api/saved-stories - Get all saved stories for the user
+app.get('/api/saved-stories', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json(user.savedStories || []);
+  } catch (error) {
+    console.error('Error fetching saved stories:', error);
+    res.status(500).json({ error: 'Error fetching saved stories' });
+  }
+});
+
+// DELETE /api/saved-stories/:storyId - Remove a saved story
+app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
+  try {
+    const { storyId } = req.params;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.savedStories = user.savedStories?.filter(id => id.toString() !== storyId);
+    await user.save();
+
+    res.json({ message: 'Story removed from saved' });
+  } catch (error) {
+    console.error('Error removing saved story:', error);
+    res.status(500).json({ error: 'Error removing saved story' });
   }
 });
 
