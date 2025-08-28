@@ -19,7 +19,7 @@ const authenticateToken = (req, res, next) => {
   
   try {
     const verified = jwt.verify(token, JWT_SECRET);
-    console.log('✅ JWT Verified:', verified); // ✅ Debug log
+    console.log('✅ JWT Verified:', verified);
     req.user = verified;
     next();
   } catch (err) {
@@ -145,7 +145,7 @@ router.put('/progress', authenticateToken, async (req, res) => {
   try {
     const { progress } = req.body;
     const user = await User.findByIdAndUpdate(
-      req.user.id, // ✅ Use id
+      req.user.id,
       { progress },
       { new: true, select: '-password' }
     );
@@ -161,4 +161,5 @@ router.put('/progress', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+// Export both the router and authenticateToken
+module.exports = { router, authenticateToken };
