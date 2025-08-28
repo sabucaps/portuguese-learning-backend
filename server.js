@@ -259,58 +259,60 @@ app.delete('/api/questions/:id', authMiddleware, async (req, res) => {
 });
 
 // ===== STORY MANAGEMENT ENDPOINTS =====
-app.get('/api/stories', async (req, res) => {
+app.post('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
-    const stories = await Story.find().sort({ title: 1 });
-    res.header('Content-Type', 'application/json; charset=utf-8');
-    res.json(stories);
+    const { storyId } = req.body;
+    const userId = req.user.id;
+
+    // ✅ Skip ObjectId validation if your user.id is a string
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.savedStories) user.savedStories = [];
+    if (!user.savedStories.includes(storyId)) {
+      user.savedStories.push(storyId);
+      await user.save();
+    }
+
+    res.json({ message: 'Story saved successfully' });
   } catch (error) {
-    console.error('Error fetching stories:', error);
-    res.status(500).json({ error: 'Error fetching stories' });
+    console.error('Error saving story:', error);
+    res.status(500).json({ error: 'Error saving story' });
   }
 });
 
-app.get('/api/stories/:id', async (req, res) => {
+// GET /api/saved-stories
+app.get('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
-    const story = await Story.findById(req.params.id);
-    if (!story) return res.status(404).json({ error: 'Story not found' });
-    res.json(story);
+    const userId = req.user.id;
+
+    // ✅ Don't validate ObjectId here
+    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json(user.savedStories || []);
   } catch (error) {
-    console.error('Error fetching story:', error);
-    res.status(500).json({ error: 'Error fetching story' });
+    console.error('Error fetching saved stories:', error);
+    res.status(500).json({ error: 'Error fetching saved stories' });
   }
 });
 
-app.post('/api/stories', authMiddleware, async (req, res) => {
+// DELETE /api/saved-stories/:storyId
+app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
   try {
-    const story = new Story(req.body);
-    await story.save();
-    res.status(201).json(story);
-  } catch (err) {
-    console.error('Error saving story:', err);
-    res.status(400).json({ error: 'Error saving story' });
-  }
-});
+    const { storyId } = req.params;
+    const userId = req.user.id;
 
-app.put('/api/stories/:id', authMiddleware, async (req, res) => {
-  try {
-    const story = await Story.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!story) return res.status(404).json({ error: 'Story not found' });
-    res.json(story);
-  } catch (err) {
-    console.error('Error updating story:', err);
-    res.status(400).json({ error: 'Error updating story' });
-  }
-});
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-app.delete('/api/stories/:id', authMiddleware, async (req, res) => {
-  try {
-    const story = await Story.findByIdAndDelete(req.params.id);
-    if (!story) return res.status(404).json({ error: 'Story not found' });
-    res.json({ message: 'Story deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting story:', err);
-    res.status(500).json({ error: 'Error deleting story' });
+    user.savedStories = user.savedStories?.filter(id => id.toString() !== storyId);
+    await user.save();
+
+    res.json({ message: 'Story removed from saved' });
+  } catch (error) {
+    console.error('Error removing saved story:', error);
+    res.status(500).json({ error: 'Error removing saved story' });
   }
 });
 
