@@ -16,7 +16,7 @@ const wordSchema = new mongoose.Schema({
   },
   group: {
     type: String,
-    default: 'Other'   // ✅ Always ensure words fall into a group
+    default: 'Other'
   },
   examples: [{
     type: String,
@@ -31,7 +31,28 @@ const wordSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+
+  // ✅ Spaced Repetition Fields
+  ease: {
+    type: Number,
+    default: 2.5  // Anki default
+  },
+  interval: {
+    type: Number,
+    default: 0   // Days until next review
+  },
+  nextReview: {
+    type: Date  // When the word is due for review
+  },
+  lastReviewed: {
+    type: Date  // When the user last reviewed this word
+  },
+  reviewCount: {
+    type: Number,
+    default: 0  // How many times the user has reviewed this word
   }
+
 }, {
   toJSON: {
     transform: function (doc, ret) {
