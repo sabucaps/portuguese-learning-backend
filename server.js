@@ -282,18 +282,31 @@ app.post('/api/saved-stories', authMiddleware, async (req, res) => {
 });
 
 // GET /api/saved-stories
-app.get('/api/saved-stories', authMiddleware, async (req, res) => {
+pp.get('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log('🔐 Incoming /api/saved-stories');
+    console.log('👤 req.user.id:', userId);
+    console.log('🆔 typeof userId:', typeof userId);
 
-    // ✅ Don't validate ObjectId here
+    // ✅ Validate ID format
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+
     const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    if (!user) {
+      console.warn('❌ User not found in DB for ID:', userId);
+      // ✅ Return empty array instead of error
+      return res.json([]);
+    }
 
+    console.log(`✅ Found user: ${user.name}, ${user.savedStories.length} saved stories`);
     res.json(user.savedStories || []);
   } catch (error) {
-    console.error('Error fetching saved stories:', error);
-    res.status(500).json({ error: 'Error fetching saved stories' });
+    console.error('❌ Error in /api/saved-stories:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -801,4 +814,5 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
+
 
