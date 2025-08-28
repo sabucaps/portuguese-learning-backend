@@ -19,9 +19,11 @@ const authenticateToken = (req, res, next) => {
   
   try {
     const verified = jwt.verify(token, JWT_SECRET);
+    console.log('✅ JWT Verified:', verified); // ✅ Debug log
     req.user = verified;
     next();
   } catch (err) {
+    console.error('❌ Invalid or expired token:', err.message);
     return res.status(403).json({ error: 'Invalid or expired token.' });
   }
 };
@@ -55,14 +57,23 @@ router.post('/register', async (req, res) => {
 
     await user.save();
 
-    // Create token
+    // ✅ Use 'id' not 'userId' in JWT
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { id: user._id, email: user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({ token, user: { id: user._id, name, email, progress: user.progress } });
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        name, 
+        email, 
+        progress: user.progress,
+        streak: user.streak
+      } 
+    });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
@@ -91,14 +102,23 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
-    // Create token
+    // ✅ Use 'id' not 'userId' in JWT
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { id: user._id, email: user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({ token, user: { id: user._id, name: user.name, email, progress: user.progress } });
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        name: user.name, 
+        email, 
+        progress: user.progress,
+        streak: user.streak
+      } 
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
@@ -108,7 +128,8 @@ router.post('/login', async (req, res) => {
 // Get current user
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('-password');
+    // ✅ Use req.user.id
+    const user = await User.findById(req.user.id).select('-password');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -124,7 +145,7 @@ router.put('/progress', authenticateToken, async (req, res) => {
   try {
     const { progress } = req.body;
     const user = await User.findByIdAndUpdate(
-      req.user.userId,
+      req.user.id, // ✅ Use id
       { progress },
       { new: true, select: '-password' }
     );
