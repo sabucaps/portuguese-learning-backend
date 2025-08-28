@@ -282,7 +282,7 @@ app.post('/api/saved-stories', authMiddleware, async (req, res) => {
 });
 
 // GET /api/saved-stories
-pp.get('/api/saved-stories', authMiddleware, async (req, res) => {
+app.get('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     console.log('🔐 Incoming /api/saved-stories');
@@ -814,5 +814,6 @@ app.listen(PORT, () => {
   console.log(`📝 Admin: http://localhost:${PORT}/admin/question-form`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);
 });
+
 
 
