@@ -37,21 +37,11 @@ const authRoutes = require('./routes/auth');
 // Initialize Express app
 const app = express();
 
-// Authentication middleware
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
-  
-  try {
-    const verified = jwt.verify(token, JWT_SECRET);
-    console.log('✅ JWT Verified:', verified);
-    req.user = verified;
-    next();
-  } catch (err) {
-    console.error('❌ Invalid or expired token:', err.message);
-    return res.status(403).json({ error: 'Invalid or expired token.' });
-  }
-};
+// Use auth routes first
+app.use('/api/auth', authRoutes);
+
+// Extract authenticateToken from authRoutes
+const { authenticateToken } = require('./routes/auth');
 
 // Configure CORS
 app.use(cors({
@@ -100,9 +90,6 @@ mongoose.connect(mongoURI, {
     process.exit(1);
   });
 
-// Use auth routes
-app.use('/api/auth', authRoutes);
-
 // ===== WORD MANAGEMENT ENDPOINTS =====
 app.get('/api/words', async (req, res) => {
   try {
@@ -115,7 +102,7 @@ app.get('/api/words', async (req, res) => {
   }
 });
 
-app.post('/api/words', authMiddleware, async (req, res) => {
+app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
     if (!portuguese || !english) {
@@ -130,7 +117,7 @@ app.post('/api/words', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/words/:id', authMiddleware, async (req, res) => {
+app.put('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -145,7 +132,7 @@ app.put('/api/words/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/words/:id', authMiddleware, async (req, res) => {
+app.delete('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -172,7 +159,7 @@ app.get('/api/groups', async (req, res) => {
   }
 });
 
-app.post('/api/groups', authMiddleware, async (req, res) => {
+app.post('/api/groups', authenticateToken, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name || name.trim() === '') {
@@ -190,7 +177,7 @@ app.post('/api/groups', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/groups/:oldName', authMiddleware, async (req, res) => {
+app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
   try {
     const { oldName } = req.params;
     const { name: newName } = req.body;
@@ -225,7 +212,7 @@ app.get('/api/questions', async (req, res) => {
   }
 });
 
-app.post('/api/questions', authMiddleware, async (req, res) => {
+app.post('/api/questions', authenticateToken, async (req, res) => {
   try {
     const question = new Question(req.body);
     await question.save();
@@ -236,7 +223,7 @@ app.post('/api/questions', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/questions/:id', authMiddleware, async (req, res) => {
+app.put('/api/questions/:id', authenticateToken, async (req, res) => {
   try {
     const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!question) return res.status(404).json({ error: 'Question not found' });
@@ -247,7 +234,7 @@ app.put('/api/questions/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/questions/:id', authMiddleware, async (req, res) => {
+app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
   try {
     const question = await Question.findByIdAndDelete(req.params.id);
     if (!question) return res.status(404).json({ error: 'Question not found' });
@@ -281,7 +268,7 @@ app.get('/api/stories/:id', async (req, res) => {
   }
 });
 
-app.post('/api/stories', authMiddleware, async (req, res) => {
+app.post('/api/stories', authenticateToken, async (req, res) => {
   try {
     const story = new Story(req.body);
     await story.save();
@@ -292,7 +279,7 @@ app.post('/api/stories', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/stories/:id', authMiddleware, async (req, res) => {
+app.put('/api/stories/:id', authenticateToken, async (req, res) => {
   try {
     const story = await Story.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!story) return res.status(404).json({ error: 'Story not found' });
@@ -303,7 +290,7 @@ app.put('/api/stories/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/stories/:id', authMiddleware, async (req, res) => {
+app.delete('/api/stories/:id', authenticateToken, async (req, res) => {
   try {
     const story = await Story.findByIdAndDelete(req.params.id);
     if (!story) return res.status(404).json({ error: 'Story not found' });
@@ -315,27 +302,20 @@ app.delete('/api/stories/:id', authMiddleware, async (req, res) => {
 });
 
 // ===== SAVED STORIES ENDPOINTS =====
-// POST /api/saved-stories
-app.post('/api/saved-stories', authMiddleware, async (req, res) => {
+app.post('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
     const { storyId } = req.body;
     const userId = req.user.id;
 
-    console.log('🔐 POST /api/saved-stories');
-    console.log('🆔 userId from JWT:', userId, 'type:', typeof userId);
+    console.log('🔐 POST /api/saved-stories - userId:', userId);
 
-    // ✅ Convert to string and find by string
-    const user = await User.findOne({ _id: userId.toString() });
-    
+    const user = await User.findById(userId);
     if (!user) {
       console.warn('❌ User not found for ID:', userId);
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!user.savedStories) {
-      user.savedStories = [];
-    }
-
+    if (!user.savedStories) user.savedStories = [];
     if (!user.savedStories.includes(storyId)) {
       user.savedStories.push(storyId);
       await user.save();
@@ -349,13 +329,10 @@ app.post('/api/saved-stories', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/saved-stories
-app.get('/api/saved-stories', authMiddleware, async (req, res) => {
+app.get('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log('🔐 GET /api/saved-stories - userId:', userId);
-
-    const user = await User.findOne({ _id: userId.toString() }).populate('savedStories', 'title description difficulty');
+    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
     
     if (!user) {
       console.warn('❌ User not found for ID:', userId);
@@ -370,13 +347,12 @@ app.get('/api/saved-stories', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/saved-stories/:storyId
-app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
+app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) => {
   try {
     const { storyId } = req.params;
     const userId = req.user.id;
 
-    const user = await User.findOne({ _id: userId.toString() });
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     user.savedStories = user.savedStories?.filter(id => id.toString() !== storyId);
@@ -388,6 +364,7 @@ app.delete('/api/saved-stories/:storyId', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Error removing saved story' });
   }
 });
+
 // ===== GRAMMAR LESSON MANAGEMENT ENDPOINTS =====
 app.get('/api/grammar-lessons', async (req, res) => {
   try {
@@ -410,7 +387,7 @@ app.get('/api/grammar-lessons/:id', async (req, res) => {
   }
 });
 
-app.post('/api/grammar-lessons', authMiddleware, async (req, res) => {
+app.post('/api/grammar-lessons', authenticateToken, async (req, res) => {
   try {
     const lesson = new GrammarLesson(req.body);
     await lesson.save();
@@ -421,7 +398,7 @@ app.post('/api/grammar-lessons', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/grammar-lessons/:id', authMiddleware, async (req, res) => {
+app.put('/api/grammar-lessons/:id', authenticateToken, async (req, res) => {
   try {
     const lesson = await GrammarLesson.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!lesson) return res.status(404).json({ error: 'Grammar lesson not found' });
@@ -432,7 +409,7 @@ app.put('/api/grammar-lessons/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/grammar-lessons/:id', authMiddleware, async (req, res) => {
+app.delete('/api/grammar-lessons/:id', authenticateToken, async (req, res) => {
   try {
     const deletedLesson = await GrammarLesson.findByIdAndDelete(req.params.id);
     if (!deletedLesson) return res.status(404).json({ error: 'Grammar lesson not found' });
@@ -466,7 +443,7 @@ app.get('/api/tests/:id', async (req, res) => {
   }
 });
 
-app.post('/api/tests', authMiddleware, async (req, res) => {
+app.post('/api/tests', authenticateToken, async (req, res) => {
   try {
     const test = new Test(req.body);
     await test.save();
@@ -477,7 +454,7 @@ app.post('/api/tests', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/tests/:id', authMiddleware, async (req, res) => {
+app.put('/api/tests/:id', authenticateToken, async (req, res) => {
   try {
     const test = await Test.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!test) return res.status(404).json({ error: 'Test not found' });
@@ -488,7 +465,7 @@ app.put('/api/tests/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/tests/:id', authMiddleware, async (req, res) => {
+app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
   try {
     const test = await Test.findByIdAndDelete(req.params.id);
     if (!test) return res.status(404).json({ error: 'Test not found' });
@@ -540,7 +517,7 @@ app.get('/api/conjugations/:id', async (req, res) => {
   }
 });
 
-app.post('/api/conjugations', authMiddleware, async (req, res) => {
+app.post('/api/conjugations', authenticateToken, async (req, res) => {
   try {
     const conjugation = new Conjugation(req.body);
     await conjugation.save();
@@ -550,7 +527,7 @@ app.post('/api/conjugations', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/api/conjugations/:id', authMiddleware, async (req, res) => {
+app.put('/api/conjugations/:id', authenticateToken, async (req, res) => {
   try {
     const conjugation = await Conjugation.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
@@ -560,7 +537,7 @@ app.put('/api/conjugations/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/conjugations/:id', authMiddleware, async (req, res) => {
+app.delete('/api/conjugations/:id', authenticateToken, async (req, res) => {
   try {
     const conjugation = await Conjugation.findByIdAndDelete(req.params.id);
     if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
@@ -586,7 +563,7 @@ app.get('/api/conjugations/search/:term', async (req, res) => {
 });
 
 // ===== IMPORT/EXPORT ENDPOINTS =====
-app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
+app.post('/api/words/import/csv', upload.single('file'), authenticateToken, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const filePath = req.file.path;
   const skipExisting = req.body.skipExisting === 'true';
@@ -624,7 +601,7 @@ app.post('/api/words/import/csv', upload.single('file'), async (req, res) => {
     });
 });
 
-app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
+app.post('/api/words/import/json', upload.single('file'), authenticateToken, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const filePath = req.file.path;
   const skipExisting = req.body.skipExisting === 'true';
@@ -661,7 +638,7 @@ app.post('/api/words/import/json', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
+app.post('/api/words/import/excel', upload.single('file'), authenticateToken, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const filePath = req.file.path;
   const workbook = new ExcelJS.Workbook();
@@ -693,7 +670,7 @@ app.post('/api/words/import/excel', upload.single('file'), async (req, res) => {
   }
 });
 
-app.get('/api/words/export/csv', async (req, res) => {
+app.get('/api/words/export/csv', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find();
     const csvWriter = createCsvWriter({
@@ -720,7 +697,7 @@ app.get('/api/words/export/csv', async (req, res) => {
   }
 });
 
-app.get('/api/words/export/json', async (req, res) => {
+app.get('/api/words/export/json', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find();
     const filename = 'words-export.json';
@@ -731,7 +708,7 @@ app.get('/api/words/export/json', async (req, res) => {
   }
 });
 
-app.get('/api/words/export/excel', async (req, res) => {
+app.get('/api/words/export/excel', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find();
     const workbook = new ExcelJS.Workbook();
