@@ -315,43 +315,52 @@ app.delete('/api/stories/:id', authMiddleware, async (req, res) => {
 });
 
 // ===== SAVED STORIES ENDPOINTS =====
+app.get('/api/saved-stories', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('🔐 GET /api/saved-stories - userId:', userId, 'type:', typeof userId);
+
+    // ✅ Skip ObjectId check — just use the ID
+    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
+    
+    if (!user) {
+      console.warn('❌ User not found in DB for ID:', userId);
+      return res.json([]); // ✅ Return empty array, not 404
+    }
+
+    console.log(`✅ Found user: ${user.name}, ${user.savedStories.length} saved stories`);
+    res.json(user.savedStories || []);
+  } catch (error) {
+    console.error('❌ Error in /api/saved-stories:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/saved-stories
 app.post('/api/saved-stories', authMiddleware, async (req, res) => {
   try {
     const { storyId } = req.body;
     const userId = req.user.id;
 
+    console.log('🔐 POST /api/saved-stories - userId:', userId, 'storyId:', storyId);
+
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) {
+      console.warn('❌ User not found for ID:', userId);
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     if (!user.savedStories) user.savedStories = [];
     if (!user.savedStories.includes(storyId)) {
       user.savedStories.push(storyId);
       await user.save();
+      console.log('✅ Story saved:', storyId);
     }
 
     res.json({ message: 'Story saved successfully' });
   } catch (error) {
-    console.error('Error saving story:', error);
+    console.error('❌ Error saving story:', error);
     res.status(500).json({ error: 'Error saving story' });
-  }
-});
-
-app.get('/api/saved-stories', authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // ✅ Skip ObjectId validation — just use the ID
-    const user = await User.findById(userId).populate('savedStories', 'title description difficulty');
-    
-    if (!user) {
-      console.warn(`User not found for ID: ${userId}`);
-      return res.json([]);
-    }
-
-    res.json(user.savedStories || []);
-  } catch (error) {
-    console.error('Error fetching saved stories:', error);
-    res.status(500).json({ error: 'Error fetching saved stories' });
   }
 });
 
