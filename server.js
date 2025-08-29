@@ -84,7 +84,7 @@ app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (prote
 // -----------------------
 // WORDS & GROUPS
 // -----------------------
-/*// GET /api/words - Returns words with user's progress merged
+// GET /api/words - Returns words with user's progress merged
 app.get('/api/words', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find().sort({ portuguese: 1 });
@@ -121,7 +121,7 @@ app.post('/api/words', authenticateToken, async (req, res) => {
     console.error('Error saving word:', err);
     res.status(400).json({ error: 'Error saving word' });
   }
-});*/
+});
 
 // PUT /api/words/:id - Save user's review progress
 app.put('/api/words/:id', authenticateToken, async (req, res) => {
@@ -599,3 +599,4 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
