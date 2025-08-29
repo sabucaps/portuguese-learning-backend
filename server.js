@@ -463,6 +463,48 @@ app.get('/api/flashcards', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error fetching flashcards' }); }});
 
 // -----------------------
+// Profile details
+// -----------------------
+// PUT /api/auth/update - Update user profile
+app.put('/auth/update', authMiddleware, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const userId = req.user.id;
+
+    // Check if email is already used by another user
+    const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email already in use' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { name, email },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ user });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(400).json({ error: 'Error updating user' });
+  }
+});
+
+// DELETE /api/auth/delete - Delete user account
+app.delete('/auth/delete', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await User.findByIdAndDelete(userId);
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    res.status(500).json({ error: 'Error deleting account' });
+  }
+});
+
+// -----------------------
 // CONJUGATIONS
 // -----------------------
 app.get('/api/conjugations', async (req, res) => {
