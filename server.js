@@ -133,33 +133,83 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
     // Initialize map if needed
     if (!user.progress.words.map) {
       user.progress.words.map = new Map();
+    }app.put('/api/words/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Validate word exists
+    const word = await Word.findById(id);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Initialize map if needed
+    if (!user.progress.words.map) {
+      user.progress.words.map = new Map();
     }
 
-    // Save progress
+    // Extract only the progress fields from request
+    const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
+
+    // Save progress to user's map
     user.progress.words.map.set(id, {
-      ease: req.body.ease,
-      interval: req.body.interval,
-      reviewCount: req.body.reviewCount,
-      lastReviewed: req.body.lastReviewed,
-      nextReview: req.body.nextReview
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
     });
 
+    // Save user document
     await user.save();
 
-    // Return word with progress
+    // Return the word with merged progress (frontend expects this)
     res.json({
       ...word.toObject(),
-      ease: req.body.ease,
-      interval: req.body.interval,
-      reviewCount: req.body.reviewCount,
-      lastReviewed: req.body.lastReviewed,
-      nextReview: req.body.nextReview
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
     });
   } catch (err) {
     console.error('Error updating word progress:', err);
     res.status(400).json({ error: 'Error updating progress' });
   }
-}); 
+});
+
+    // Extract only the progress fields from request
+    const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
+
+    // Save progress to user's map
+    user.progress.words.map.set(id, {
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
+
+    // Save user document
+    await user.save();
+
+    // Return the word with merged progress (frontend expects this)
+    res.json({
+      ...word.toObject(),
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
+  } catch (err) {
+    console.error('Error updating word progress:', err);
+    res.status(400).json({ error: 'Error updating progress' });
+  }
+});
 
 // DELETE /api/words/:id
 app.delete('/api/words/:id', authenticateToken, async (req, res) => {
