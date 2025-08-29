@@ -35,6 +35,12 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
+// Helper function to validate ObjectIds
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id) && 
+         (String)(new mongoose.Types.ObjectId(id)) === id;
+};
+
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -251,31 +257,53 @@ app.delete('/api/stories/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Saved Stories
+// Saved Stories - FIXED ENDPOINTS
 app.get('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).populate('savedStories');
-    if (!user) return res.json([]);
-    res.json(user.savedStories || []);
+    console.log(`Fetching saved stories for user: ${req.user.id}`);
+    
+    if (!isValidObjectId(req.user.id)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    
+    const user = await User.findById(req.user.id).populate('progress.savedStories');
+    if (!user) {
+      console.log('User not found');
+      return res.json([]);
+    }
+    
+    console.log(`Found ${user.progress.savedStories.length} saved stories`);
+    res.json(user.progress.savedStories || []);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error fetching saved stories' });
+    console.error('Error in /api/saved-stories:', err);
+    res.status(500).json({ error: 'Error fetching saved stories', details: err.message });
   }
 });
 
 app.post('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
     const { storyId } = req.body;
+    
+    if (!storyId || !isValidObjectId(storyId)) {
+      return res.status(400).json({ error: 'Valid story ID required' });
+    }
+    
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.savedStories.includes(storyId)) {
-      user.savedStories.push(storyId);
+    
+    // Check if story exists
+    const story = await Story.findById(storyId);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    
+    // Check if story already saved
+    if (!user.progress.savedStories.includes(storyId)) {
+      user.progress.savedStories.push(storyId);
       await user.save();
     }
     res.json({ message: 'Story saved successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error saving story' });
+    console.error('Error saving story:', err);
+    res.status(500).json({ error: 'Error saving story', details: err.message });
   }
 });
 
@@ -283,12 +311,15 @@ app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) =>
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    user.savedStories = user.savedStories.filter(id => id.toString() !== req.params.storyId);
+    
+    user.progress.savedStories = user.progress.savedStories.filter(
+      id => id.toString() !== req.params.storyId
+    );
     await user.save();
     res.json({ message: 'Story removed from saved' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error removing saved story' });
+    console.error('Error removing saved story:', err);
+    res.status(500).json({ error: 'Error removing saved story', details: err.message });
   }
 });
 
@@ -385,6 +416,53 @@ app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
 });
 
 // -----------------------
+// FLASHCARDS
+// -----------------------
+// POST /api/flashcards/review
+app.post('/api/flashcards/review', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { wordId, difficulty } = req.body;
+
+    if (!wordId || !difficulty) {
+      return res.status(400).json({ error: 'wordId and difficulty are required' });    }
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const word = await Word.findById(wordId);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
+    const now = new Date();
+    // Get existing progress or default
+    const prev = user.progress.words[wordId] || {};
+    let ease = prev.ease || 2.5;
+    let interval = prev.interval || 0;
+    if (difficulty === 'easy') {interval = Math.max(1, interval * ease);
+      ease = Math.min(3.0, ease + 0.15); } else if (difficulty === 'medium') 
+	  {interval = Math.max(0.5, interval * 0.8); ease = Math.max(1.3, ease - 0.15);
+    } else { interval = 0.1; ease = 1.8; }
+    const nextReview = new Date();
+    nextReview.setTime(now.getTime() + interval * 24 * 60 * 60 * 1000);
+    // Save progress
+    user.progress.words[wordId] = { interval,ease, lastReviewed: now.toISOString(),
+      nextReview: nextReview.toISOString(), reviewCount: (prev.reviewCount || 0) + 1, };
+    await user.save();
+    res.json({ message: 'Review saved', wordId, progress: user.progress.words[wordId] });
+  } catch (err) {console.error('Error saving flashcard review:', err);
+    res.status(500).json({ error: 'Error saving flashcard review' }); }});
+// GET /api/flashcards
+app.get('/api/flashcards', authenticateToken, async (req, res) => {
+  try {const userId = req.user.id;
+  const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const words = await Word.find().sort({ portuguese: 1 });
+    // Merge user progress into each word
+    const wordsWithProgress = words.map(word => {
+      const progress = user.progress.words[word._id] || {};
+      return { ...word.toObject(), ...progress,  }; });
+    res.json(wordsWithProgress); } catch (err) {
+    console.error('Error fetching flashcards:', err);
+    res.status(500).json({ error: 'Error fetching flashcards' }); }});
+
+// -----------------------
 // CONJUGATIONS
 // -----------------------
 app.get('/api/conjugations', async (req, res) => {
@@ -445,6 +523,18 @@ app.use((err, req, res, next) => {
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
+});
+
+// -----------------------
+// Process Event Handlers
+// -----------------------
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
 });
 
 // -----------------------
