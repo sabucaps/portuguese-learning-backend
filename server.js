@@ -13,11 +13,8 @@ const GrammarLesson = require('./models/GrammarLesson');
 const Test = require('./models/Test');
 const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
-
-// Auth routes + middleware
+const Sentence = require('./models/Sentence');
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
-
-// Flashcards route (moved to separate file)
 const flashcardsRoute = require('./routes/flashcards');
 
 const app = express();
@@ -68,6 +65,16 @@ mongoose.connect(MONGODB_URI, { family: 4 })
     process.exit(1);
   });
 
+app.get('/api/sentences', async (req, res) => {
+  try {
+    const sentences = await Sentence.find({});
+    res.json(sentences);
+  } catch (error) {
+    console.error('Error fetching sentences:', error);
+    res.status(500).json({ error: 'Error fetching sentences' });
+  }
+});
+
 // -----------------------
 // Mount modular routes
 // -----------------------
@@ -77,7 +84,7 @@ app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (prote
 // -----------------------
 // WORDS & GROUPS
 // -----------------------
-// GET /api/words - Returns words with user's progress merged
+/*// GET /api/words - Returns words with user's progress merged
 app.get('/api/words', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find().sort({ portuguese: 1 });
@@ -103,7 +110,7 @@ app.get('/api/words', authenticateToken, async (req, res) => {
 });
 
 // POST /api/words - Create new word (no user progress yet)
-/*app.post('/api/words', authenticateToken, async (req, res) => {
+app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
     if (!portuguese || !english) return res.status(400).json({ error: 'Portuguese and English are required' });
