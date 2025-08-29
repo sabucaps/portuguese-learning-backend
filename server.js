@@ -72,7 +72,7 @@ mongoose.connect(MONGODB_URI, { family: 4 })
 // Mount modular routes
 // -----------------------
 app.use('/api/auth', authRoutes);
-app.use('/api/flashcards', flashcardsRoute);
+app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
 
 // -----------------------
 // WORDS & GROUPS
@@ -102,8 +102,8 @@ app.get('/api/words', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/words - Create new word
-app.post('/api/words', authenticateToken, async (req, res) => {
+// POST /api/words - Create new word (no user progress yet)
+/*app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
     if (!portuguese || !english) return res.status(400).json({ error: 'Portuguese and English are required' });
@@ -114,9 +114,9 @@ app.post('/api/words', authenticateToken, async (req, res) => {
     console.error('Error saving word:', err);
     res.status(400).json({ error: 'Error saving word' });
   }
-});
+});*/
 
-// PUT /api/words/:id - Save user's review progress ✅ FIXED
+// PUT /api/words/:id - Save user's review progress
 app.put('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -159,7 +159,7 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
     console.error('Error updating word progress:', err);
     res.status(400).json({ error: 'Error updating progress' });
   }
-});
+}); 
 
 // DELETE /api/words/:id
 app.delete('/api/words/:id', authenticateToken, async (req, res) => {
