@@ -12,11 +12,11 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// Authentication middleware
+// Authentication middleware (kept private to this file)
 const authenticateToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
-  
+
   try {
     const verified = jwt.verify(token, JWT_SECRET);
     req.user = verified; // { id, email }
@@ -38,7 +38,6 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
 
-    // Optional: validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format.' });
 
@@ -53,15 +52,15 @@ router.post('/register', async (req, res) => {
 
     const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ 
-      token, 
-      user: { 
-        id: user._id, 
-        name, 
-        email, 
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name,
+        email,
         progress: user.progress,
         streak: user.streak
-      } 
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -85,15 +84,15 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ 
-      token, 
-      user: { 
-        id: user._id, 
-        name: user.name, 
-        email, 
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email,
         progress: user.progress,
         streak: user.streak
-      } 
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -134,4 +133,4 @@ router.put('/progress', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = { router, authenticateToken };
+module.exports = router;
