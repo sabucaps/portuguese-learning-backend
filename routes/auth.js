@@ -19,50 +19,39 @@ const authenticateToken = (req, res, next) => {
   
   try {
     const verified = jwt.verify(token, JWT_SECRET);
-    console.log('✅ JWT Verified:', verified);
-    req.user = verified;
+    req.user = verified; // { id, email }
     next();
   } catch (err) {
-    console.error('❌ Invalid or expired token:', err.message);
+    console.error('❌ JWT verification failed:', err.message);
     return res.status(403).json({ error: 'Invalid or expired token.' });
   }
 };
 
+// ------------------------
 // Register new user
+// ------------------------
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Validation
     if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email and password are required' });
+      return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
 
-    // Check if user already exists
+    // Optional: validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format.' });
+
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
+    if (existingUser) return res.status(400).json({ error: 'User already exists.' });
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create user
-    const user = new User({
-      name,
-      email,
-      password: hashedPassword
-    });
-
+    const user = new User({ name, email, password: hashedPassword });
     await user.save();
 
-    // ✅ Use 'id' not 'userId' in JWT
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       token, 
@@ -76,38 +65,25 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed.' });
   }
 });
 
+// ------------------------
 // Login user
+// ------------------------
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    // Find user
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid credentials' });
-    }
+    if (!user) return res.status(400).json({ error: 'Invalid credentials.' });
 
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid credentials' });
-    }
+    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials.' });
 
-    // ✅ Use 'id' not 'userId' in JWT
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       token, 
@@ -121,26 +97,27 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed.' });
   }
 });
 
+// ------------------------
 // Get current user
+// ------------------------
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    // ✅ Use req.user.id
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found.' });
     res.json(user);
   } catch (error) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Failed to get user' });
+    res.status(500).json({ error: 'Failed to get user.' });
   }
 });
 
+// ------------------------
 // Update user progress
+// ------------------------
 router.put('/progress', authenticateToken, async (req, res) => {
   try {
     const { progress } = req.body;
@@ -149,17 +126,12 @@ router.put('/progress', authenticateToken, async (req, res) => {
       { progress },
       { new: true, select: '-password' }
     );
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
+    if (!user) return res.status(404).json({ error: 'User not found.' });
     res.json(user);
   } catch (error) {
     console.error('Update progress error:', error);
-    res.status(500).json({ error: 'Failed to update progress' });
+    res.status(500).json({ error: 'Failed to update progress.' });
   }
 });
 
-// Export both the router and authenticateToken
 module.exports = { router, authenticateToken };
