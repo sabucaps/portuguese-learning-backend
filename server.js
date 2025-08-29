@@ -4,6 +4,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+app.use('/api/words', require('./words'));
 
 // Models
 const Word = require('./models/Word');
@@ -510,5 +511,6 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
 
 
