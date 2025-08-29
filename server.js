@@ -14,13 +14,16 @@ const Test = require('./models/Test');
 const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
 
-// Auth
+// Auth routes + middleware
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
+
+// Flashcards route (moved to separate file)
+const flashcardsRoute = require('./routes/flashcards');
 
 const app = express();
 
 // -----------------------
-// Config
+// Config / Environment
 // -----------------------
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -35,16 +38,19 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-// Helper function to validate ObjectIds
+// Helper to validate ObjectId (safe check)
 const isValidObjectId = (id) => {
-  return mongoose.Types.ObjectId.isValid(id) && 
-         (String)(new mongoose.Types.ObjectId(id)) === id;
+  try {
+    return mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
+  } catch (e) {
+    return false;
+  }
 };
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Logging
 app.use((req, res, next) => {
@@ -63,9 +69,10 @@ mongoose.connect(MONGODB_URI, { family: 4 })
   });
 
 // -----------------------
-// Routes
+// Mount modular routes
 // -----------------------
 app.use('/api/auth', authRoutes);
+app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
 
 // -----------------------
 // WORDS & GROUPS
@@ -75,7 +82,7 @@ app.get('/api/words', async (req, res) => {
     const words = await Word.find().sort({ portuguese: 1 });
     res.json(words);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching words:', err);
     res.status(500).json({ error: 'Error fetching words' });
   }
 });
@@ -88,7 +95,7 @@ app.post('/api/words', authenticateToken, async (req, res) => {
     await word.save();
     res.status(201).json(word);
   } catch (err) {
-    console.error(err);
+    console.error('Error saving word:', err);
     res.status(400).json({ error: 'Error saving word' });
   }
 });
@@ -99,7 +106,7 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
     if (!word) return res.status(404).json({ error: 'Word not found' });
     res.json(word);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating word:', err);
     res.status(400).json({ error: 'Error updating word' });
   }
 });
@@ -110,7 +117,7 @@ app.delete('/api/words/:id', authenticateToken, async (req, res) => {
     if (!word) return res.status(404).json({ error: 'Word not found' });
     res.json({ message: 'Word deleted successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting word:', err);
     res.status(500).json({ error: 'Error deleting word' });
   }
 });
@@ -121,7 +128,7 @@ app.get('/api/groups', async (req, res) => {
     const groups = await Word.distinct('group');
     res.json(['Other', ...groups.filter(g => g && g !== 'Other')]);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching groups:', err);
     res.status(500).json({ error: 'Error fetching groups' });
   }
 });
@@ -134,7 +141,7 @@ app.post('/api/groups', authenticateToken, async (req, res) => {
     if (exists) return res.status(400).json({ error: 'Group already exists' });
     res.json({ message: 'Group created', name: name.trim() });
   } catch (err) {
-    console.error(err);
+    console.error('Error adding group:', err);
     res.status(500).json({ error: 'Error adding group' });
   }
 });
@@ -149,7 +156,7 @@ app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
     const result = await Word.updateMany({ group: oldName }, { $set: { group: newName.trim() } });
     res.json({ message: 'Group updated', oldName, newName: newName.trim(), wordsUpdated: result.modifiedCount });
   } catch (err) {
-    console.error(err);
+    console.error('Error updating group:', err);
     res.status(500).json({ error: 'Error updating group' });
   }
 });
@@ -162,7 +169,7 @@ app.get('/api/questions', async (req, res) => {
     const questions = await Question.find().sort({ question: 1 });
     res.json(questions);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching questions:', err);
     res.status(500).json({ error: 'Error fetching questions' });
   }
 });
@@ -173,7 +180,7 @@ app.post('/api/questions', authenticateToken, async (req, res) => {
     await question.save();
     res.status(201).json(question);
   } catch (err) {
-    console.error(err);
+    console.error('Error saving question:', err);
     res.status(400).json({ error: 'Error saving question' });
   }
 });
@@ -184,7 +191,7 @@ app.put('/api/questions/:id', authenticateToken, async (req, res) => {
     if (!question) return res.status(404).json({ error: 'Question not found' });
     res.json(question);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating question:', err);
     res.status(400).json({ error: 'Error updating question' });
   }
 });
@@ -195,7 +202,7 @@ app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
     if (!question) return res.status(404).json({ error: 'Question not found' });
     res.json({ message: 'Question deleted' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting question:', err);
     res.status(500).json({ error: 'Error deleting question' });
   }
 });
@@ -208,7 +215,7 @@ app.get('/api/stories', async (req, res) => {
     const stories = await Story.find().sort({ title: 1 });
     res.json(stories);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching stories:', err);
     res.status(500).json({ error: 'Error fetching stories' });
   }
 });
@@ -219,7 +226,7 @@ app.get('/api/stories/:id', async (req, res) => {
     if (!story) return res.status(404).json({ error: 'Story not found' });
     res.json(story);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching story:', err);
     res.status(500).json({ error: 'Error fetching story' });
   }
 });
@@ -230,7 +237,7 @@ app.post('/api/stories', authenticateToken, async (req, res) => {
     await story.save();
     res.status(201).json(story);
   } catch (err) {
-    console.error(err);
+    console.error('Error creating story:', err);
     res.status(400).json({ error: 'Error creating story' });
   }
 });
@@ -241,7 +248,7 @@ app.put('/api/stories/:id', authenticateToken, async (req, res) => {
     if (!story) return res.status(404).json({ error: 'Story not found' });
     res.json(story);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating story:', err);
     res.status(400).json({ error: 'Error updating story' });
   }
 });
@@ -252,30 +259,25 @@ app.delete('/api/stories/:id', authenticateToken, async (req, res) => {
     if (!story) return res.status(404).json({ error: 'Story not found' });
     res.json({ message: 'Story deleted' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting story:', err);
     res.status(500).json({ error: 'Error deleting story' });
   }
 });
 
-// Saved Stories - FIXED ENDPOINTS
+// Saved Stories (preserve behavior)
 app.get('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
     console.log(`Fetching saved stories for user: ${req.user.id}`);
-    
     if (!isValidObjectId(req.user.id)) {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
-    
     const user = await User.findById(req.user.id).populate('progress.savedStories');
     if (!user) {
-      console.log('User not found');
       return res.json([]);
     }
-    
-    console.log(`Found ${user.progress.savedStories.length} saved stories`);
     res.json(user.progress.savedStories || []);
   } catch (err) {
-    console.error('Error in /api/saved-stories:', err);
+    console.error('Error fetching saved stories:', err);
     res.status(500).json({ error: 'Error fetching saved stories', details: err.message });
   }
 });
@@ -283,19 +285,14 @@ app.get('/api/saved-stories', authenticateToken, async (req, res) => {
 app.post('/api/saved-stories', authenticateToken, async (req, res) => {
   try {
     const { storyId } = req.body;
-    
-    if (!storyId || !isValidObjectId(storyId)) {
-      return res.status(400).json({ error: 'Valid story ID required' });
-    }
-    
+    if (!storyId || !isValidObjectId(storyId)) return res.status(400).json({ error: 'Valid story ID required' });
+
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
-    // Check if story exists
+
     const story = await Story.findById(storyId);
     if (!story) return res.status(404).json({ error: 'Story not found' });
-    
-    // Check if story already saved
+
     if (!user.progress.savedStories.includes(storyId)) {
       user.progress.savedStories.push(storyId);
       await user.save();
@@ -311,10 +308,8 @@ app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) =>
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
-    user.progress.savedStories = user.progress.savedStories.filter(
-      id => id.toString() !== req.params.storyId
-    );
+
+    user.progress.savedStories = user.progress.savedStories.filter(id => id.toString() !== req.params.storyId);
     await user.save();
     res.json({ message: 'Story removed from saved' });
   } catch (err) {
@@ -331,7 +326,7 @@ app.get('/api/grammar', async (req, res) => {
     const lessons = await GrammarLesson.find().sort({ title: 1 });
     res.json(lessons);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching grammar lessons:', err);
     res.status(500).json({ error: 'Error fetching grammar lessons' });
   }
 });
@@ -342,7 +337,7 @@ app.post('/api/grammar', authenticateToken, async (req, res) => {
     await lesson.save();
     res.status(201).json(lesson);
   } catch (err) {
-    console.error(err);
+    console.error('Error creating lesson:', err);
     res.status(400).json({ error: 'Error creating lesson' });
   }
 });
@@ -353,7 +348,7 @@ app.put('/api/grammar/:id', authenticateToken, async (req, res) => {
     if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
     res.json(lesson);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating lesson:', err);
     res.status(400).json({ error: 'Error updating lesson' });
   }
 });
@@ -364,7 +359,7 @@ app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
     if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
     res.json({ message: 'Lesson deleted' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting lesson:', err);
     res.status(500).json({ error: 'Error deleting lesson' });
   }
 });
@@ -377,7 +372,7 @@ app.get('/api/tests', async (req, res) => {
     const tests = await Test.find().sort({ title: 1 });
     res.json(tests);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching tests:', err);
     res.status(500).json({ error: 'Error fetching tests' });
   }
 });
@@ -388,7 +383,7 @@ app.post('/api/tests', authenticateToken, async (req, res) => {
     await test.save();
     res.status(201).json(test);
   } catch (err) {
-    console.error(err);
+    console.error('Error creating test:', err);
     res.status(400).json({ error: 'Error creating test' });
   }
 });
@@ -399,7 +394,7 @@ app.put('/api/tests/:id', authenticateToken, async (req, res) => {
     if (!test) return res.status(404).json({ error: 'Test not found' });
     res.json(test);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating test:', err);
     res.status(400).json({ error: 'Error updating test' });
   }
 });
@@ -410,97 +405,8 @@ app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
     if (!test) return res.status(404).json({ error: 'Test not found' });
     res.json({ message: 'Test deleted' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting test:', err);
     res.status(500).json({ error: 'Error deleting test' });
-  }
-});
-
-// -----------------------
-// FLASHCARDS
-// -----------------------
-// POST /api/flashcards/review
-app.post('/api/flashcards/review', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { wordId, difficulty } = req.body;
-
-    if (!wordId || !difficulty) {
-      return res.status(400).json({ error: 'wordId and difficulty are required' });    }
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const word = await Word.findById(wordId);
-    if (!word) return res.status(404).json({ error: 'Word not found' });
-    const now = new Date();
-    // Get existing progress or default
-    const prev = user.progress.words[wordId] || {};
-    let ease = prev.ease || 2.5;
-    let interval = prev.interval || 0;
-    if (difficulty === 'easy') {interval = Math.max(1, interval * ease);
-      ease = Math.min(3.0, ease + 0.15); } else if (difficulty === 'medium') 
-	  {interval = Math.max(0.5, interval * 0.8); ease = Math.max(1.3, ease - 0.15);
-    } else { interval = 0.1; ease = 1.8; }
-    const nextReview = new Date();
-    nextReview.setTime(now.getTime() + interval * 24 * 60 * 60 * 1000);
-    // Save progress
-    user.progress.words[wordId] = { interval,ease, lastReviewed: now.toISOString(),
-      nextReview: nextReview.toISOString(), reviewCount: (prev.reviewCount || 0) + 1, };
-    await user.save();
-    res.json({ message: 'Review saved', wordId, progress: user.progress.words[wordId] });
-  } catch (err) {console.error('Error saving flashcard review:', err);
-    res.status(500).json({ error: 'Error saving flashcard review' }); }});
-// GET /api/flashcards
-app.get('/api/flashcards', authenticateToken, async (req, res) => {
-  try {const userId = req.user.id;
-  const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const words = await Word.find().sort({ portuguese: 1 });
-    // Merge user progress into each word
-    const wordsWithProgress = words.map(word => {
-      const progress = user.progress.words[word._id] || {};
-      return { ...word.toObject(), ...progress,  }; });
-    res.json(wordsWithProgress); } catch (err) {
-    console.error('Error fetching flashcards:', err);
-    res.status(500).json({ error: 'Error fetching flashcards' }); }});
-
-// -----------------------
-// Profile details
-// -----------------------
-// PUT /api/auth/update - Update user profile
-app.put('/auth/update', authMiddleware, async (req, res) => {
-  try {
-    const { name, email } = req.body;
-    const userId = req.user.id;
-
-    // Check if email is already used by another user
-    const existingUser = await User.findOne({ email, _id: { $ne: userId } });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already in use' });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { name, email },
-      { new: true, runValidators: true }
-    );
-
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    res.json({ user });
-  } catch (error) {
-    console.error('Error updating user:', error);
-    res.status(400).json({ error: 'Error updating user' });
-  }
-});
-
-// DELETE /api/auth/delete - Delete user account
-app.delete('/auth/delete', authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    await User.findByIdAndDelete(userId);
-    res.json({ message: 'Account deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting account:', error);
-    res.status(500).json({ error: 'Error deleting account' });
   }
 });
 
@@ -512,7 +418,7 @@ app.get('/api/conjugations', async (req, res) => {
     const conjugations = await Conjugation.find().sort({ verb: 1 });
     res.json(conjugations);
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching conjugations:', err);
     res.status(500).json({ error: 'Error fetching conjugations' });
   }
 });
@@ -523,7 +429,7 @@ app.post('/api/conjugations', authenticateToken, async (req, res) => {
     await conjugation.save();
     res.status(201).json(conjugation);
   } catch (err) {
-    console.error(err);
+    console.error('Error creating conjugation:', err);
     res.status(400).json({ error: 'Error creating conjugation' });
   }
 });
@@ -534,7 +440,7 @@ app.put('/api/conjugations/:id', authenticateToken, async (req, res) => {
     if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
     res.json(conjugation);
   } catch (err) {
-    console.error(err);
+    console.error('Error updating conjugation:', err);
     res.status(400).json({ error: 'Error updating conjugation' });
   }
 });
@@ -545,7 +451,7 @@ app.delete('/api/conjugations/:id', authenticateToken, async (req, res) => {
     if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
     res.json({ message: 'Conjugation deleted' });
   } catch (err) {
-    console.error(err);
+    console.error('Error deleting conjugation:', err);
     res.status(500).json({ error: 'Error deleting conjugation' });
   }
 });
@@ -582,4 +488,6 @@ process.on('uncaughtException', (error) => {
 // -----------------------
 // START SERVER
 // -----------------------
-app.listen(PORT, '0.0.0.0', () => console.log(`✅ Server started on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server started on port ${PORT}`);
+});
