@@ -72,7 +72,7 @@ mongoose.connect(MONGODB_URI, { family: 4 })
 // Mount modular routes
 // -----------------------
 app.use('/api/auth', authRoutes);
-app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
+app.use('/api/flashcards', flashcardsRoute);
 
 // -----------------------
 // WORDS & GROUPS
@@ -102,7 +102,7 @@ app.get('/api/words', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/words - Create new word (no user progress yet)
+// POST /api/words - Create new word
 app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
@@ -113,6 +113,51 @@ app.post('/api/words', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error saving word:', err);
     res.status(400).json({ error: 'Error saving word' });
+  }
+});
+
+// PUT /api/words/:id - Save user's review progress ✅ FIXED
+app.put('/api/words/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Validate word exists
+    const word = await Word.findById(id);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Initialize map if needed
+    if (!user.progress.words.map) {
+      user.progress.words.map = new Map();
+    }
+
+    // Save progress
+    user.progress.words.map.set(id, {
+      ease: req.body.ease,
+      interval: req.body.interval,
+      reviewCount: req.body.reviewCount,
+      lastReviewed: req.body.lastReviewed,
+      nextReview: req.body.nextReview
+    });
+
+    await user.save();
+
+    // Return word with progress
+    res.json({
+      ...word.toObject(),
+      ease: req.body.ease,
+      interval: req.body.interval,
+      reviewCount: req.body.reviewCount,
+      lastReviewed: req.body.lastReviewed,
+      nextReview: req.body.nextReview
+    });
+  } catch (err) {
+    console.error('Error updating word progress:', err);
+    res.status(400).json({ error: 'Error updating progress' });
   }
 });
 
