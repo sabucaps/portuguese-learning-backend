@@ -425,51 +425,7 @@ app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) =>
   }
 });
 
-// -----------------------
-// GRAMMAR LESSONS
-// -----------------------
-app.get('/api/grammar', async (req, res) => {
-  try {
-    const lessons = await GrammarLesson.find().sort({ title: 1 });
-    res.json(lessons);
-  } catch (err) {
-    console.error('Error fetching grammar lessons:', err);
-    res.status(500).json({ error: 'Error fetching grammar lessons' });
-  }
-});
 
-app.post('/api/grammar', authenticateToken, async (req, res) => {
-  try {
-    const lesson = new GrammarLesson(req.body);
-    await lesson.save();
-    res.status(201).json(lesson);
-  } catch (err) {
-    console.error('Error creating lesson:', err);
-    res.status(400).json({ error: 'Error creating lesson' });
-  }
-});
-
-app.put('/api/grammar/:id', authenticateToken, async (req, res) => {
-  try {
-    const lesson = await GrammarLesson.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
-    res.json(lesson);
-  } catch (err) {
-    console.error('Error updating lesson:', err);
-    res.status(400).json({ error: 'Error updating lesson' });
-  }
-});
-
-app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
-  try {
-    const lesson = await GrammarLesson.findByIdAndDelete(req.params.id);
-    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
-    res.json({ message: 'Lesson deleted' });
-  } catch (err) {
-    console.error('Error deleting lesson:', err);
-    res.status(500).json({ error: 'Error deleting lesson' });
-  }
-});
 
 // -----------------------
 // TESTS
@@ -514,6 +470,64 @@ app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting test:', err);
     res.status(500).json({ error: 'Error deleting test' });
+  }
+});
+
+// Get tests by story ID
+app.get('/api/tests/story/:storyId', async (req, res) => {
+  try {
+    const { storyId } = req.params;
+    const tests = await Test.find({ storyId }); // assumes Test model has `storyId` field
+    res.json(tests);
+  } catch (err) {
+    console.error('Error fetching tests for story:', err);
+    res.status(500).json({ error: 'Error fetching tests for story' });
+  }
+});
+
+// -----------------------
+// GRAMMAR LESSONS
+// -----------------------
+app.get('/api/grammar', async (req, res) => {
+  try {
+    const lessons = await GrammarLesson.find().sort({ title: 1 });
+    res.json(lessons);
+  } catch (err) {
+    console.error('Error fetching grammar lessons:', err);
+    res.status(500).json({ error: 'Error fetching grammar lessons' });
+  }
+});
+
+app.post('/api/grammar', authenticateToken, async (req, res) => {
+  try {
+    const lesson = new GrammarLesson(req.body);
+    await lesson.save();
+    res.status(201).json(lesson);
+  } catch (err) {
+    console.error('Error creating lesson:', err);
+    res.status(400).json({ error: 'Error creating lesson' });
+  }
+});
+
+app.put('/api/grammar/:id', authenticateToken, async (req, res) => {
+  try {
+    const lesson = await GrammarLesson.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json(lesson);
+  } catch (err) {
+    console.error('Error updating lesson:', err);
+    res.status(400).json({ error: 'Error updating lesson' });
+  }
+});
+
+app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
+  try {
+    const lesson = await GrammarLesson.findByIdAndDelete(req.params.id);
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json({ message: 'Lesson deleted' });
+  } catch (err) {
+    console.error('Error deleting lesson:', err);
+    res.status(500).json({ error: 'Error deleting lesson' });
   }
 });
 
