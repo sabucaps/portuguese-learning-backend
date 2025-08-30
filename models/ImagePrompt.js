@@ -7,7 +7,6 @@ word: {
     required: true,
     trim: true,
     unique: true,
-}
   },
   imageUrl: {
     type: String,
