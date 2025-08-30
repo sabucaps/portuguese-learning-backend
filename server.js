@@ -14,6 +14,7 @@ const Test = require('./models/Test');
 const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
 const Sentence = require('./models/Sentence');
+const ImagePrompt = require('./models/ImagePrompt');
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
 const flashcardsRoute = require('./routes/flashcards');
 const app = express();
