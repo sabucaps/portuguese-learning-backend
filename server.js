@@ -16,7 +16,7 @@ const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
 const Sentence = require('./models/Sentence');
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
-const flashcardsRoute = require('./routes/flashcards');
+//const flashcardsRoute = require('./routes/flashcards');
 
 const app = express();
 
@@ -511,6 +511,7 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
 
 
 
