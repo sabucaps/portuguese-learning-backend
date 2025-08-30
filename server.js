@@ -543,8 +543,6 @@ app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Import the model
-const ImagePrompt = require('./models/ImagePrompt');
 
 // ===== IMAGE PROMPTS ENDPOINTS =====
 
