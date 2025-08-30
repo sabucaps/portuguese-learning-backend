@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const Word = require("../models/Word");
-const auth = require("../middleware/auth");
+const auth = require("../routes/auth");
 
 // 📌 Get user-specific flashcards
 router.get("/", auth, async (req, res) => {
@@ -93,3 +93,4 @@ router.post("/review", auth, async (req, res) => {
 });
 
 module.exports = router;
+
