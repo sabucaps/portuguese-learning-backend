@@ -270,52 +270,6 @@ app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
 });
 
 // -----------------------
-// QUESTIONS
-// -----------------------
-app.get('/api/questions', async (req, res) => {
-  try {
-    const questions = await Question.find().sort({ question: 1 });
-    res.json(questions);
-  } catch (err) {
-    console.error('Error fetching questions:', err);
-    res.status(500).json({ error: 'Error fetching questions' });
-  }
-});
-
-app.post('/api/questions', authenticateToken, async (req, res) => {
-  try {
-    const question = new Question(req.body);
-    await question.save();
-    res.status(201).json(question);
-  } catch (err) {
-    console.error('Error saving question:', err);
-    res.status(400).json({ error: 'Error saving question' });
-  }
-});
-
-app.put('/api/questions/:id', authenticateToken, async (req, res) => {
-  try {
-    const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!question) return res.status(404).json({ error: 'Question not found' });
-    res.json(question);
-  } catch (err) {
-    console.error('Error updating question:', err);
-    res.status(400).json({ error: 'Error updating question' });
-  }
-});
-
-app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
-  try {
-    const question = await Question.findByIdAndDelete(req.params.id);
-    if (!question) return res.status(404).json({ error: 'Question not found' });
-    res.json({ message: 'Question deleted' });
-  } catch (err) {
-    console.error('Error deleting question:', err);
-    res.status(500).json({ error: 'Error deleting question' });
-  }
-});
-
-// -----------------------
 // STORIES & SAVED STORIES
 // -----------------------
 app.get('/api/stories', async (req, res) => {
