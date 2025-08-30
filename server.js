@@ -542,6 +542,117 @@ app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Import the model
+const ImagePrompt = require('./models/ImagePrompt');
+
+// ===== IMAGE PROMPTS ENDPOINTS =====
+
+// GET /api/image-prompts - Get all active prompts
+app.get('/api/image-prompts', async (req, res) => {
+  try {
+    const prompts = await ImagePrompt.find({ isActive: true }).select('word imageUrl category').sort({ word: 1 });
+    res.json(prompts);
+  } catch (error) {
+    console.error('Error fetching image prompts:', error);
+    res.status(500).json({ error: 'Error fetching image prompts' });
+  }
+});
+
+// GET /api/image-prompts/random/:count - Get N random prompts
+app.get('/api/image-prompts/random/:count', async (req, res) => {
+  try {
+    const count = parseInt(req.params.count) || 4;
+    const maxCount = 6;
+    const limit = Math.min(count, maxCount);
+
+    // Get total count
+    const total = await ImagePrompt.countDocuments({ isActive: true });
+    if (total === 0) {
+      return res.json([]);
+    }
+
+    // If collection is small, use sample
+    if (total <= 100) {
+      const prompts = await ImagePrompt.aggregate([
+        { $match: { isActive: true } },
+        { $sample: { size: limit } },
+        { $project: { word: 1, imageUrl: 1, category: 1, _id: 0 } }
+      ]);
+      res.json(prompts);
+    } else {
+      // For large collections, use random skip
+      const skip = Math.max(0, Math.floor(Math.random() * (total - limit)));
+      const prompts = await ImagePrompt.find({ isActive: true })
+        .select('word imageUrl category')
+        .skip(skip)
+        .limit(limit);
+      res.json(prompts);
+    }
+  } catch (error) {
+    console.error('Error fetching random image prompts:', error);
+    res.status(500).json({ error: 'Error fetching random prompts' });
+  }
+});
+
+// POST /api/image-prompts - Add a new prompt (admin only)
+app.post('/api/image-prompts', authenticateToken, async (req, res) => {
+  try {
+    const { word, imageUrl, category = 'Other', difficulty = 1 } = req.body;
+
+    if (!word || !imageUrl) {
+      return res.status(400).json({ error: 'Word and imageUrl are required' });
+    }
+
+    // Check for duplicates
+    const existing = await ImagePrompt.findOne({ 
+      $or: [
+        { word: new RegExp(`^${word}$`, 'i') },
+        { imageUrl }
+      ]
+    });
+
+    if (existing) {
+      return res.status(400).json({ 
+        error: 'Word or image already exists',
+        existing: {
+          word: existing.word,
+          imageUrl: existing.imageUrl
+        }
+      });
+    }
+
+    const prompt = new ImagePrompt({ word, imageUrl, category, difficulty });
+    await prompt.save();
+
+    res.status(201).json({
+      message: 'Image prompt added successfully',
+      prompt: {
+        word: prompt.word,
+        imageUrl: prompt.imageUrl,
+        category: prompt.category
+      }
+    });
+  } catch (error) {
+    console.error('Error adding image prompt:', error);
+    res.status(400).json({ error: 'Error adding image prompt', details: error.message });
+  }
+});
+
+// DELETE /api/image-prompts/:word - Remove a prompt
+app.delete('/api/image-prompts/:word', authenticateToken, async (req, res) => {
+  try {
+    const { word } = req.params;
+    const result = await ImagePrompt.findOneAndDelete({ word });
+    if (!result) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    res.json({ message: 'Prompt deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting image prompt:', error);
+    res.status(500).json({ error: 'Error deleting prompt' });
+  }
+});
+
 // -----------------------
 // CONJUGATIONS
 // -----------------------
@@ -615,6 +726,8 @@ app.post('/auth/change-password', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error changing password' });
   }
 });
+
+
 
 // -----------------------
 // HEALTH CHECK
