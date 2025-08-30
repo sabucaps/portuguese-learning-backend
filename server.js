@@ -485,6 +485,17 @@ app.get('/api/tests/story/:storyId', async (req, res) => {
   }
 });
 
+app.get('/api/tests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const test = await Test.findById(id);
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    res.json(test);
+  } catch (err) {
+    console.error('Error fetching test:', err);
+    res.status(500).json({ error: 'Error fetching test' });
+  }
+});
 // -----------------------
 // GRAMMAR LESSONS
 // -----------------------
@@ -612,4 +623,5 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
 
