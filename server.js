@@ -588,6 +588,34 @@ app.delete('/api/conjugations/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password
+app.post('/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Error changing password' });
+  }
+});
+
 // -----------------------
 // HEALTH CHECK
 // -----------------------
@@ -623,5 +651,6 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
 
 
