@@ -4,7 +4,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
-app.use('/api/words', require('./words'));
 
 // Models
 const Word = require('./models/Word');
@@ -16,9 +15,9 @@ const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
 const Sentence = require('./models/Sentence');
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
-//const flashcardsRoute = require('./routes/flashcards');
-
+const flashcardsRoute = require('./routes/flashcards');
 const app = express();
+
 
 // -----------------------
 // Config / Environment
@@ -83,24 +82,23 @@ app.use('/api/auth', authRoutes);
 app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
 
 // -----------------------
-// WORDS & USER PROGRESS
+// WORDS & GROUPS
 // -----------------------
-
 // GET /api/words - Returns words with user's progress merged
 app.get('/api/words', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find().sort({ portuguese: 1 });
-    const user = await User.findById(req.user.id).select('progress.words');
-
+    const user = await User.findById(req.user.id).select('progress.words.map');
+    
     const wordsWithProgress = words.map(word => {
-      const progress = user?.progress?.words?.[word._id] || {};
+      const progress = user?.progress?.words?.map?.get(word.id) || {};
       return {
         ...word.toObject(),
-        ease: progress.ease ?? 2.5,
-        interval: progress.interval ?? 0,
-        reviewCount: progress.reviewCount ?? 0,
-        lastReviewed: progress.lastReviewed ?? null,
-        nextReview: progress.nextReview ?? null
+        ease: progress.ease,
+        interval: progress.interval,
+        reviewCount: progress.reviewCount,
+        lastReviewed: progress.lastReviewed,
+        nextReview: progress.nextReview
       };
     });
 
@@ -111,15 +109,13 @@ app.get('/api/words', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/words - Create new word
+// POST /api/words - Create new word (no user progress yet)
 app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
     if (!portuguese || !english) return res.status(400).json({ error: 'Portuguese and English are required' });
-
     const word = new Word({ portuguese, english, group, examples, imageUrl });
     await word.save();
-
     res.status(201).json(word);
   } catch (err) {
     console.error('Error saving word:', err);
@@ -141,27 +137,50 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Initialize progress object if needed
-    if (!user.progress) user.progress = {};
-    if (!user.progress.words) user.progress.words = {};
+    // Initialize map if needed
+    if (!user.progress.words.map) {
+      user.progress.words.map = new Map();
+    }app.put('/api/words/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
 
-    // Extract progress fields from request
+    // Validate word exists
+    const word = await Word.findById(id);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Initialize map if needed
+    if (!user.progress.words.map) {
+      user.progress.words.map = new Map();
+    }
+
+    // Extract only the progress fields from request
     const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
 
-    // Save progress
-    user.progress.words[id] = {
-      ease: ease ?? 2.5,
-      interval: interval ?? 0,
-      reviewCount: reviewCount ?? 0,
-      lastReviewed: lastReviewed ?? new Date().toISOString(),
-      nextReview: nextReview ?? null
-    };
+    // Save progress to user's map
+    user.progress.words.map.set(id, {
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
 
+    // Save user document
     await user.save();
 
+    // Return the word with merged progress (frontend expects this)
     res.json({
       ...word.toObject(),
-      ...user.progress.words[id]
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
     });
   } catch (err) {
     console.error('Error updating word progress:', err);
@@ -169,7 +188,37 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/words/:id - Delete a word
+    // Extract only the progress fields from request
+    const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
+
+    // Save progress to user's map
+    user.progress.words.map.set(id, {
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
+
+    // Save user document
+    await user.save();
+
+    // Return the word with merged progress (frontend expects this)
+    res.json({
+      ...word.toObject(),
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
+  } catch (err) {
+    console.error('Error updating word progress:', err);
+    res.status(400).json({ error: 'Error updating progress' });
+  }
+});
+
+// DELETE /api/words/:id
 app.delete('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const word = await Word.findByIdAndDelete(req.params.id);
@@ -178,6 +227,45 @@ app.delete('/api/words/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting word:', err);
     res.status(500).json({ error: 'Error deleting word' });
+  }
+});
+
+// Groups
+app.get('/api/groups', async (req, res) => {
+  try {
+    const groups = await Word.distinct('group');
+    res.json(['Other', ...groups.filter(g => g && g !== 'Other')]);
+  } catch (err) {
+    console.error('Error fetching groups:', err);
+    res.status(500).json({ error: 'Error fetching groups' });
+  }
+});
+
+app.post('/api/groups', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Group name required' });
+    const exists = await Word.findOne({ group: name.trim() });
+    if (exists) return res.status(400).json({ error: 'Group already exists' });
+    res.json({ message: 'Group created', name: name.trim() });
+  } catch (err) {
+    console.error('Error adding group:', err);
+    res.status(500).json({ error: 'Error adding group' });
+  }
+});
+
+app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
+  try {
+    const { oldName } = req.params;
+    const { name: newName } = req.body;
+    if (!newName || oldName === 'Other') return res.status(400).json({ error: 'Invalid group rename' });
+    const exists = await Word.findOne({ group: newName.trim() });
+    if (exists) return res.status(400).json({ error: 'Group already exists' });
+    const result = await Word.updateMany({ group: oldName }, { $set: { group: newName.trim() } });
+    res.json({ message: 'Group updated', oldName, newName: newName.trim(), wordsUpdated: result.modifiedCount });
+  } catch (err) {
+    console.error('Error updating group:', err);
+    res.status(500).json({ error: 'Error updating group' });
   }
 });
 
@@ -511,7 +599,3 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
-
-
-
-
