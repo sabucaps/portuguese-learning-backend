@@ -1,25 +1,23 @@
-// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Load JWT_SECRET
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error('❌ JWT_SECRET is not set in .env file');
   process.exit(1);
 }
 
-// Authentication middleware (kept private to this file)
+// Authentication middleware
 const authenticateToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
 
   try {
     const verified = jwt.verify(token, JWT_SECRET);
-    req.user = verified; // { id, email }
+    req.user = verified;
     next();
   } catch (err) {
     console.error('❌ JWT verification failed:', err.message);
@@ -28,12 +26,11 @@ const authenticateToken = (req, res, next) => {
 };
 
 // ------------------------
-// Register new user
+// Register
 // ------------------------
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
@@ -69,7 +66,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ------------------------
-// Login user
+// Login
 // ------------------------
 router.post('/login', async (req, res) => {
   try {
@@ -133,4 +130,5 @@ router.put('/progress', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+// ✅ Export both router and middleware
+module.exports = { router, authenticateToken };
