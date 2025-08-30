@@ -2,14 +2,12 @@
 const mongoose = require('mongoose');
 
 const imagePromptSchema = new mongoose.Schema({
-  word: {
+word: {
     type: String,
     required: true,
     trim: true,
-    unique: true, // No duplicates
-    set: function (value) {
-      return value;
-    }
+    unique: true,
+}
   },
   imageUrl: {
     type: String,
