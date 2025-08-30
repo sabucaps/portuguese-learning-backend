@@ -1,15 +1,40 @@
-// routes/flashcards.js
+
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-const router = express.Router();
+const cors = require('cors');
+const path = require('path');
 
-const Word = require('../models/Word');
-const User = require('../models/User');
+// Models
+const Word = require('./models/Word');
+const Question = require('./models/Question');
+const Story = require('./models/Story');
+const GrammarLesson = require('./models/GrammarLesson');
+const Test = require('./models/Test');
+const Conjugation = require('./models/Conjugation');
+const User = require('./models/User');
+const Sentence = require('./models/Sentence');
+const { router: authRoutes, authenticateToken } = require('./routes/auth');
+const flashcardsRoute = require('./routes/flashcards');
+const app = express();
 
-// Use authenticateToken exported from routes/auth.js
-const { authenticateToken } = require('./auth');
+// -----------------------
+// Config / Environment
+// -----------------------
+const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET;
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Helper to validate ObjectId
+if (!JWT_SECRET) {
+  console.error('❌ JWT_SECRET not set');
+  process.exit(1);
+}
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI not set');
+  process.exit(1);
+}
+
+// Helper to validate ObjectId (safe check)
 const isValidObjectId = (id) => {
   try {
     return mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
@@ -18,216 +43,559 @@ const isValidObjectId = (id) => {
   }
 };
 
-/**
- * Helpers to read/set progress in a backwards-compatible way.
- *
- * We support:
- *  - Newer shape: user.progress.words is a map/object keyed by wordId:
- *      user.progress.words[wordId] = { ease, interval, reviewCount, lastReviewed, nextReview }
- *  - Older shape: user.progress.words.mastered (array of ids), user.progress.words.needsReview (array)
- *    and/or user.progress.wordsHistory: [{ wordId, ease, interval, reviewCount, lastReviewed }]
- *
- * When writing, we update the map (preferred) and also push/update wordsHistory and mastered/needsReview arrays
- * so any UI depending on old fields continues to work.
- */
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-function getProgressEntry(user, wordId) {
-  if (!user.progress) return null;
+// Logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
 
-  // Ensure container shapes exist
-  if (!user.progress.words) user.progress.words = {}; // preferred map
-  if (!user.progress.wordsHistory) user.progress.wordsHistory = [];
-  if (!user.progress.words.mastered) {
-    // If words was an array in old shape (rare), keep that safe; ensure structure
-    if (!Array.isArray(user.progress.words.mastered)) user.progress.words.mastered = [];
-  }
-  if (!user.progress.words.needsReview) {
-    if (!Array.isArray(user.progress.words.needsReview)) user.progress.words.needsReview = [];
-  }
+// -----------------------
+// MongoDB Connection
+// -----------------------
+mongoose.connect(MONGODB_URI, { family: 4 })
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
-  // Prefer map entry if present
-  const mapEntry = user.progress.words[wordId];
-  if (mapEntry) return mapEntry;
-
-  // Fallback to history entry
-  const historyEntry = (user.progress.wordsHistory || []).find(e => String(e.wordId) === String(wordId));
-  if (historyEntry) {
-    // Normalize keys
-    return {
-      ease: typeof historyEntry.ease === 'number' ? historyEntry.ease : 2.5,
-      interval: typeof historyEntry.interval === 'number' ? historyEntry.interval : 0,
-      reviewCount: historyEntry.reviewCount || 0,
-      lastReviewed: historyEntry.lastReviewed,
-      nextReview: historyEntry.nextReview
-    };
-  }
-
-  // If neither exists, return default
-  return {
-    ease: 2.5,
-    interval: 0,
-    reviewCount: 0,
-    lastReviewed: null,
-    nextReview: null
-  };
-}
-
-function setProgressEntry(user, wordId, entry) {
-  if (!user.progress) user.progress = {};
-  if (!user.progress.words) user.progress.words = {};
-  if (!user.progress.wordsHistory) user.progress.wordsHistory = [];
-  if (!Array.isArray(user.progress.words.mastered)) user.progress.words.mastered = [];
-  if (!Array.isArray(user.progress.words.needsReview)) user.progress.words.needsReview = [];
-
-  // Write preferred map entry
-  user.progress.words[wordId] = {
-    ease: entry.ease,
-    interval: entry.interval,
-    reviewCount: entry.reviewCount,
-    lastReviewed: entry.lastReviewed,
-    nextReview: entry.nextReview
-  };
-
-  // Maintain a history array entry (upsert)
-  const idx = user.progress.wordsHistory.findIndex(e => String(e.wordId) === String(wordId));
-  const historyObj = {
-    wordId,
-    ease: entry.ease,
-    interval: entry.interval,
-    reviewCount: entry.reviewCount,
-    lastReviewed: entry.lastReviewed,
-    nextReview: entry.nextReview
-  };
-  if (idx === -1) user.progress.wordsHistory.push(historyObj);
-  else user.progress.wordsHistory[idx] = historyObj;
-
-  // Update mastered / needsReview arrays for backwards compat:
-  // simple heuristic:
-  // - mastered if interval >= 7 and ease > 2.6
-  // - needsReview if ease < 2.0 or interval < 7
-  const masteredIdx = user.progress.words.mastered.findIndex(id => String(id) === String(wordId));
-  const needsIdx = user.progress.words.needsReview.findIndex(id => String(id) === String(wordId));
-  const isMastered = entry.interval >= 7 && entry.ease > 2.6;
-  const isNeeds = entry.ease < 2.0 || entry.interval < 7;
-
-  // Add/remove from arrays based on above
-  if (isMastered) {
-    if (masteredIdx === -1) user.progress.words.mastered.push(wordId);
-    if (needsIdx !== -1) user.progress.words.needsReview.splice(needsIdx, 1);
-  } else if (isNeeds) {
-    if (needsIdx === -1) user.progress.words.needsReview.push(wordId);
-    if (masteredIdx !== -1) user.progress.words.mastered.splice(masteredIdx, 1);
-  } else {
-    // neither; remove from both if present
-    if (masteredIdx !== -1) user.progress.words.mastered.splice(masteredIdx, 1);
-    if (needsIdx !== -1) user.progress.words.needsReview.splice(needsIdx, 1);
-  }
-}
-
-/**
- * GET /api/flashcards
- * Returns all words merged with the logged-in user's progress.
- */
-router.get('/', authenticateToken, async (req, res) => {
+app.get('/api/sentences', async (req, res) => {
   try {
-    const userId = req.user.id;
-    if (!isValidObjectId(userId)) return res.status(400).json({ error: 'Invalid user ID' });
+    const sentences = await Sentence.find({});
+    res.json(sentences);
+  } catch (error) {
+    console.error('Error fetching sentences:', error);
+    res.status(500).json({ error: 'Error fetching sentences' });
+  }
+});
 
-    const user = await User.findById(userId).lean(); // lean for read-only
-    if (!user) return res.status(404).json({ error: 'User not found' });
+// -----------------------
+// Mount modular routes
+// -----------------------
+app.use('/api/auth', authRoutes);
+app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
 
-    // Fetch words. You can add query filters later (due items only, groups, pagination).
+// -----------------------
+// WORDS & GROUPS
+// -----------------------
+// GET /api/words - Returns words with user's progress merged
+app.get('/api/words', authenticateToken, async (req, res) => {
+  try {
     const words = await Word.find().sort({ portuguese: 1 });
-
-    // Merge per-word progress in a stable manner
-    const wordsWithProgress = words.map((w) => {
-      const wordId = String(w._id);
-      const progress = getProgressEntry(user, wordId) || {};
-
+    const user = await User.findById(req.user.id).select('progress.words.map');
+    
+    const wordsWithProgress = words.map(word => {
+      const progress = user?.progress?.words?.map?.get(word.id) || {};
       return {
-        ...w.toObject(),
-        // Ensure client-friendly keys exist
-        ease: typeof progress.ease === 'number' ? progress.ease : 2.5,
-        interval: typeof progress.interval === 'number' ? progress.interval : 0,
-        reviewCount: progress.reviewCount || 0,
-        lastReviewed: progress.lastReviewed || null,
-        nextReview: progress.nextReview || null
+        ...word.toObject(),
+        ease: progress.ease,
+        interval: progress.interval,
+        reviewCount: progress.reviewCount,
+        lastReviewed: progress.lastReviewed,
+        nextReview: progress.nextReview
       };
     });
 
     res.json(wordsWithProgress);
   } catch (err) {
-    console.error('Error fetching user flashcards:', err);
-    res.status(500).json({ error: 'Server error fetching user flashcards', details: err.message });
+    console.error('Error fetching words:', err);
+    res.status(500).json({ error: 'Error fetching words' });
   }
 });
 
-/**
- * POST /api/flashcards/review
- * Body: { wordId: string, difficulty: 'easy'|'medium'|'hard' }
- * Saves user-specific review/progress for that word. Updates map + history + arrays for backward compat.
- */
-router.post('/review', authenticateToken, async (req, res) => {
+// POST /api/words - Create new word (no user progress yet)
+app.post('/api/words', authenticateToken, async (req, res) => {
   try {
+    const { portuguese, english, group, examples, imageUrl } = req.body;
+    if (!portuguese || !english) return res.status(400).json({ error: 'Portuguese and English are required' });
+    const word = new Word({ portuguese, english, group, examples, imageUrl });
+    await word.save();
+    res.status(201).json(word);
+  } catch (err) {
+    console.error('Error saving word:', err);
+    res.status(400).json({ error: 'Error saving word' });
+  }
+});
+
+// PUT /api/words/:id - Save user's review progress
+app.put('/api/words/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
     const userId = req.user.id;
-    const { wordId, difficulty } = req.body;
 
-    if (!wordId || !difficulty) {
-      return res.status(400).json({ error: 'wordId and difficulty are required' });
-    }
-    if (!isValidObjectId(userId) || !isValidObjectId(wordId)) {
-      return res.status(400).json({ error: 'Invalid userId or wordId' });
-    }
+    // Validate word exists
+    const word = await Word.findById(id);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
 
+    // Get user
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const word = await Word.findById(wordId);
-    if (!word) return res.status(404).json({ error: 'Word not found' });
-
-    // Read previous progress (normalize)
-    const prev = getProgressEntry(user, wordId) || { ease: 2.5, interval: 0, reviewCount: 0 };
-
-    let ease = typeof prev.ease === 'number' ? prev.ease : 2.5;
-    let interval = typeof prev.interval === 'number' ? prev.interval : 0;
-
-    if (difficulty === 'easy') {
-      interval = Math.max(1, (interval || 1) * ease);
-      ease = Math.min(3.0, ease + 0.15);
-    } else if (difficulty === 'medium') {
-      interval = Math.max(0.5, (interval || 1) * 0.8);
-      ease = Math.max(1.3, ease - 0.15);
-    } else {
-      // hard
-      interval = 0.1;
-      ease = 1.8;
+    // Initialize map if needed
+    if (!user.progress.words.map) {
+      user.progress.words.map = new Map();
     }
 
-    const now = new Date();
-    const nextReview = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000);
+    // Extract only the progress fields from request
+    const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
 
-    const updated = {
-      ease,
-      interval,
-      reviewCount: (prev.reviewCount || 0) + 1,
-      lastReviewed: now.toISOString(),
-      nextReview: nextReview.toISOString()
-    };
+    // Save progress to user's map
+    user.progress.words.map.set(id, {
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
+    });
 
-    // Persist using helper (updates map, history & mastered/needs arrays)
-    setProgressEntry(user, wordId, updated);
-
+    // Save user document
     await user.save();
 
-    return res.json({
-      message: 'Review saved',
-      wordId,
-      progress: updated
+    // Return the word with merged progress (frontend expects this)
+    res.json({
+      ...word.toObject(),
+      ease: ease || 2.5,
+      interval: interval || 0,
+      reviewCount: reviewCount || 0,
+      lastReviewed: lastReviewed || new Date().toISOString(),
+      nextReview: nextReview || null
     });
   } catch (err) {
-    console.error('Error saving review:', err);
-    res.status(500).json({ error: 'Error saving flashcard review', details: err.message });
+    console.error('Error updating word progress:', err);
+    res.status(400).json({ error: 'Error updating progress' });
   }
 });
 
-module.exports = router;
+// DELETE /api/words/:id
+app.delete('/api/words/:id', authenticateToken, async (req, res) => {
+  try {
+    const word = await Word.findByIdAndDelete(req.params.id);
+    if (!word) return res.status(404).json({ error: 'Word not found' });
+    res.json({ message: 'Word deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting word:', err);
+    res.status(500).json({ error: 'Error deleting word' });
+  }
+});
+
+// Groups
+app.get('/api/groups', async (req, res) => {
+  try {
+    const groups = await Word.distinct('group');
+    res.json(['Other', ...groups.filter(g => g && g !== 'Other')]);
+  } catch (err) {
+    console.error('Error fetching groups:', err);
+    res.status(500).json({ error: 'Error fetching groups' });
+  }
+});
+
+app.post('/api/groups', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Group name required' });
+    const exists = await Word.findOne({ group: name.trim() });
+    if (exists) return res.status(400).json({ error: 'Group already exists' });
+    res.json({ message: 'Group created', name: name.trim() });
+  } catch (err) {
+    console.error('Error adding group:', err);
+    res.status(500).json({ error: 'Error adding group' });
+  }
+});
+
+app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
+  try {
+    const { oldName } = req.params;
+    const { name: newName } = req.body;
+    if (!newName || oldName === 'Other') return res.status(400).json({ error: 'Invalid group rename' });
+    const exists = await Word.findOne({ group: newName.trim() });
+    if (exists) return res.status(400).json({ error: 'Group already exists' });
+    const result = await Word.updateMany({ group: oldName }, { $set: { group: newName.trim() } });
+    res.json({ message: 'Group updated', oldName, newName: newName.trim(), wordsUpdated: result.modifiedCount });
+  } catch (err) {
+    console.error('Error updating group:', err);
+    res.status(500).json({ error: 'Error updating group' });
+  }
+});
+
+// -----------------------
+// QUESTIONS
+// -----------------------
+app.get('/api/questions', async (req, res) => {
+  try {
+    const questions = await Question.find().sort({ question: 1 });
+    res.json(questions);
+  } catch (err) {
+    console.error('Error fetching questions:', err);
+    res.status(500).json({ error: 'Error fetching questions' });
+  }
+});
+
+app.post('/api/questions', authenticateToken, async (req, res) => {
+  try {
+    const question = new Question(req.body);
+    await question.save();
+    res.status(201).json(question);
+  } catch (err) {
+    console.error('Error saving question:', err);
+    res.status(400).json({ error: 'Error saving question' });
+  }
+});
+
+app.put('/api/questions/:id', authenticateToken, async (req, res) => {
+  try {
+    const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    res.json(question);
+  } catch (err) {
+    console.error('Error updating question:', err);
+    res.status(400).json({ error: 'Error updating question' });
+  }
+});
+
+app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
+  try {
+    const question = await Question.findByIdAndDelete(req.params.id);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    res.json({ message: 'Question deleted' });
+  } catch (err) {
+    console.error('Error deleting question:', err);
+    res.status(500).json({ error: 'Error deleting question' });
+  }
+});
+
+// -----------------------
+// QUESTIONS
+// -----------------------
+app.get('/api/questions', async (req, res) => {
+  try {
+    const questions = await Question.find().sort({ question: 1 });
+    res.json(questions);
+  } catch (err) {
+    console.error('Error fetching questions:', err);
+    res.status(500).json({ error: 'Error fetching questions' });
+  }
+});
+
+app.post('/api/questions', authenticateToken, async (req, res) => {
+  try {
+    const question = new Question(req.body);
+    await question.save();
+    res.status(201).json(question);
+  } catch (err) {
+    console.error('Error saving question:', err);
+    res.status(400).json({ error: 'Error saving question' });
+  }
+});
+
+app.put('/api/questions/:id', authenticateToken, async (req, res) => {
+  try {
+    const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    res.json(question);
+  } catch (err) {
+    console.error('Error updating question:', err);
+    res.status(400).json({ error: 'Error updating question' });
+  }
+});
+
+app.delete('/api/questions/:id', authenticateToken, async (req, res) => {
+  try {
+    const question = await Question.findByIdAndDelete(req.params.id);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    res.json({ message: 'Question deleted' });
+  } catch (err) {
+    console.error('Error deleting question:', err);
+    res.status(500).json({ error: 'Error deleting question' });
+  }
+});
+
+// -----------------------
+// STORIES & SAVED STORIES
+// -----------------------
+app.get('/api/stories', async (req, res) => {
+  try {
+    const stories = await Story.find().sort({ title: 1 });
+    res.json(stories);
+  } catch (err) {
+    console.error('Error fetching stories:', err);
+    res.status(500).json({ error: 'Error fetching stories' });
+  }
+});
+
+app.get('/api/stories/:id', async (req, res) => {
+  try {
+    const story = await Story.findById(req.params.id);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json(story);
+  } catch (err) {
+    console.error('Error fetching story:', err);
+    res.status(500).json({ error: 'Error fetching story' });
+  }
+});
+
+app.post('/api/stories', authenticateToken, async (req, res) => {
+  try {
+    const story = new Story(req.body);
+    await story.save();
+    res.status(201).json(story);
+  } catch (err) {
+    console.error('Error creating story:', err);
+    res.status(400).json({ error: 'Error creating story' });
+  }
+});
+
+app.put('/api/stories/:id', authenticateToken, async (req, res) => {
+  try {
+    const story = await Story.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json(story);
+  } catch (err) {
+    console.error('Error updating story:', err);
+    res.status(400).json({ error: 'Error updating story' });
+  }
+});
+
+app.delete('/api/stories/:id', authenticateToken, async (req, res) => {
+  try {
+    const story = await Story.findByIdAndDelete(req.params.id);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    res.json({ message: 'Story deleted' });
+  } catch (err) {
+    console.error('Error deleting story:', err);
+    res.status(500).json({ error: 'Error deleting story' });
+  }
+});
+
+// Saved Stories
+app.get('/api/saved-stories', authenticateToken, async (req, res) => {
+  try {
+    console.log(`Fetching saved stories for user: ${req.user.id}`);
+    if (!isValidObjectId(req.user.id)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    const user = await User.findById(req.user.id).populate('progress.savedStories');
+    if (!user) {
+      return res.json([]);
+    }
+    res.json(user.progress.savedStories || []);
+  } catch (err) {
+    console.error('Error fetching saved stories:', err);
+    res.status(500).json({ error: 'Error fetching saved stories', details: err.message });
+  }
+});
+
+app.post('/api/saved-stories', authenticateToken, async (req, res) => {
+  try {
+    const { storyId } = req.body;
+    if (!storyId || !isValidObjectId(storyId)) return res.status(400).json({ error: 'Valid story ID required' });
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const story = await Story.findById(storyId);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+
+    if (!user.progress.savedStories.includes(storyId)) {
+      user.progress.savedStories.push(storyId);
+      await user.save();
+    }
+    res.json({ message: 'Story saved successfully' });
+  } catch (err) {
+    console.error('Error saving story:', err);
+    res.status(500).json({ error: 'Error saving story', details: err.message });
+  }
+});
+
+app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.progress.savedStories = user.progress.savedStories.filter(id => id.toString() !== req.params.storyId);
+    await user.save();
+    res.json({ message: 'Story removed from saved' });
+  } catch (err) {
+    console.error('Error removing saved story:', err);
+    res.status(500).json({ error: 'Error removing saved story', details: err.message });
+  }
+});
+
+// -----------------------
+// GRAMMAR LESSONS
+// -----------------------
+app.get('/api/grammar', async (req, res) => {
+  try {
+    const lessons = await GrammarLesson.find().sort({ title: 1 });
+    res.json(lessons);
+  } catch (err) {
+    console.error('Error fetching grammar lessons:', err);
+    res.status(500).json({ error: 'Error fetching grammar lessons' });
+  }
+});
+
+app.post('/api/grammar', authenticateToken, async (req, res) => {
+  try {
+    const lesson = new GrammarLesson(req.body);
+    await lesson.save();
+    res.status(201).json(lesson);
+  } catch (err) {
+    console.error('Error creating lesson:', err);
+    res.status(400).json({ error: 'Error creating lesson' });
+  }
+});
+
+app.put('/api/grammar/:id', authenticateToken, async (req, res) => {
+  try {
+    const lesson = await GrammarLesson.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json(lesson);
+  } catch (err) {
+    console.error('Error updating lesson:', err);
+    res.status(400).json({ error: 'Error updating lesson' });
+  }
+});
+
+app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
+  try {
+    const lesson = await GrammarLesson.findByIdAndDelete(req.params.id);
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json({ message: 'Lesson deleted' });
+  } catch (err) {
+    console.error('Error deleting lesson:', err);
+    res.status(500).json({ error: 'Error deleting lesson' });
+  }
+});
+
+// -----------------------
+// TESTS
+// -----------------------
+app.get('/api/tests', async (req, res) => {
+  try {
+    const tests = await Test.find().sort({ title: 1 });
+    res.json(tests);
+  } catch (err) {
+    console.error('Error fetching tests:', err);
+    res.status(500).json({ error: 'Error fetching tests' });
+  }
+});
+
+app.post('/api/tests', authenticateToken, async (req, res) => {
+  try {
+    const test = new Test(req.body);
+    await test.save();
+    res.status(201).json(test);
+  } catch (err) {
+    console.error('Error creating test:', err);
+    res.status(400).json({ error: 'Error creating test' });
+  }
+});
+
+app.put('/api/tests/:id', authenticateToken, async (req, res) => {
+  try {
+    const test = await Test.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    res.json(test);
+  } catch (err) {
+    console.error('Error updating test:', err);
+    res.status(400).json({ error: 'Error updating test' });
+  }
+});
+
+app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
+  try {
+    const test = await Test.findByIdAndDelete(req.params.id);
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    res.json({ message: 'Test deleted' });
+  } catch (err) {
+    console.error('Error deleting test:', err);
+    res.status(500).json({ error: 'Error deleting test' });
+  }
+});
+
+// -----------------------
+// CONJUGATIONS
+// -----------------------
+app.get('/api/conjugations', async (req, res) => {
+  try {
+    const conjugations = await Conjugation.find().sort({ verb: 1 });
+    res.json(conjugations);
+  } catch (err) {
+    console.error('Error fetching conjugations:', err);
+    res.status(500).json({ error: 'Error fetching conjugations' });
+  }
+});
+
+app.post('/api/conjugations', authenticateToken, async (req, res) => {
+  try {
+    const conjugation = new Conjugation(req.body);
+    await conjugation.save();
+    res.status(201).json(conjugation);
+  } catch (err) {
+    console.error('Error creating conjugation:', err);
+    res.status(400).json({ error: 'Error creating conjugation' });
+  }
+});
+
+app.put('/api/conjugations/:id', authenticateToken, async (req, res) => {
+  try {
+    const conjugation = await Conjugation.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
+    res.json(conjugation);
+  } catch (err) {
+    console.error('Error updating conjugation:', err);
+    res.status(400).json({ error: 'Error updating conjugation' });
+  }
+});
+
+app.delete('/api/conjugations/:id', authenticateToken, async (req, res) => {
+  try {
+    const conjugation = await Conjugation.findByIdAndDelete(req.params.id);
+    if (!conjugation) return res.status(404).json({ error: 'Conjugation not found' });
+    res.json({ message: 'Conjugation deleted' });
+  } catch (err) {
+    console.error('Error deleting conjugation:', err);
+    res.status(500).json({ error: 'Error deleting conjugation' });
+  }
+});
+
+// -----------------------
+// HEALTH CHECK
+// -----------------------
+app.get('/health', (req, res) => res.json({ status: 'OK', message: 'Server running' }));
+
+// -----------------------
+// ERROR HANDLING
+// -----------------------
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error', details: err.message });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// -----------------------
+// Process Event Handlers
+// -----------------------
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+// -----------------------
+// START SERVER
+// -----------------------
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server started on port ${PORT}`);
+});
+
