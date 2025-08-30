@@ -6,7 +6,8 @@ const imagePromptSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    unique: true, // No duplicates
+    lowercase: true, // ✅ Case-insensitive
+    unique: true,
     set: function (value) {
       return value;
     }
@@ -16,7 +17,7 @@ const imagePromptSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function(v) {
-        return /^(https?|data:image):/.test(v);
+        return /^https?:\/\/.+|data:image\/[a-zA-Z]+;base64,.+$/i.test(v);
       },
       message: props => `${props.value} is not a valid URL or base64 image`
     }
@@ -36,9 +37,14 @@ const imagePromptSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  },
   isActive: {
     type: Boolean,
-    default: true
+    default: true,
+    index: true // ✅ For faster queries
   }
 }, {
   toJSON: {
@@ -49,6 +55,12 @@ const imagePromptSchema = new mongoose.Schema({
       return ret;
     }
   }
+});
+
+// ✅ Pre-save hook to update timestamp
+imagePromptSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
+  next();
 });
 
 module.exports = mongoose.model('ImagePrompt', imagePromptSchema);
