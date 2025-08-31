@@ -219,26 +219,39 @@ app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
 app.post('/api/journal', authenticateToken, async (req, res) => {
   try {
     const { userId, date, wordHistory, task1, task2, task3 } = req.body;
-    
+
     // Validate required fields
     if (!userId || !date || !Array.isArray(wordHistory)) {
       return res.status(400).json({ 
-        error: 'Missing required fields' 
+        error: 'Missing required fields'  
       });
     }
 
-    // Here you would create and save a Journal entry
-    // For now, just echo back the data (simulate success)
-    console.log('📥 Received journal entry:', { userId, date, task1, task2, task3, wordCount: wordHistory.length });
-    
-    // Simulate saving to database
+    // Ensure userId is a valid ObjectId
+    const mongooseUserId = mongoose.Types.ObjectId(userId);
+
+    // Create and save the journal entry
+    const journalEntry = new Journal({
+      userId: mongooseUserId,
+      date,
+      wordHistory,
+      task1,
+      task2,
+      task3
+    });
+
+    await journalEntry.save();
+
+    console.log('✅ Saved journal entry:', journalEntry);
+
     res.status(201).json({ 
       message: 'Journal entry saved successfully',
-      id: Date.now().toString(), // Simulated ID
-      ...req.body 
+      id: journalEntry._id,   // Real MongoDB ID
+      journal: journalEntry
     });
+
   } catch (err) {
-    console.error('Error saving journal entry:', err);
+    console.error('❌ Error saving journal entry:', err);
     res.status(500).json({ 
       error: 'Error saving journal entry', 
       details: err.message 
