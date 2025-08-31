@@ -222,6 +222,40 @@ app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error updating group' });
   }
 });
+// -----------------------
+// JOURNAL
+// -----------------------
+// POST /api/journal - Save journal entry
+app.post('/api/journal', authenticateToken, async (req, res) => {
+  try {
+    const { userId, date, wordHistory, task1, task2, task3 } = req.body;
+    const entry = new Journal({
+      userId,
+      date,
+      wordHistory,
+      task1,
+      task2,
+      task3
+    });
+    await entry.save();
+    res.status(201).json(entry);
+  } catch (err) {
+    console.error('Error saving journal entry:', err);
+    res.status(500).json({ error: 'Error saving journal entry' });
+  }
+});
+
+// GET /api/journal - Get user's journal
+app.get('/api/journal', authenticateToken, async (req, res) => {
+  try {
+    const entries = await Journal.find({ userId: req.user.id }).sort({ date: -1 });
+    res.json(entries);
+  } catch (err) {
+    console.error('Error fetching journal:', err);
+    res.status(500).json({ error: 'Error fetching journal' });
+  }
+});
+
 
 // -----------------------
 // QUESTIONS
