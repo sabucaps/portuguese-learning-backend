@@ -220,53 +220,34 @@ app.post('/api/journal', authenticateToken, async (req, res) => {
   try {
     const { userId, date, wordHistory, task1, task2, task3 } = req.body;
 
-    // Validate required fields
-    if (!userId || !date || !Array.isArray(wordHistory)) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Security: Ensure user can't save for another user
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Ensure userId is a valid ObjectId
-    let mongooseUserId;
-    try {
-      mongooseUserId = mongoose.Types.ObjectId(userId);
-    } catch {
-      return res.status(400).json({ error: 'Invalid userId' });
-    }
+    const entry = new Journal({ userId, date, wordHistory, task1, task2, task3 });
+    await entry.save();
 
-    // Create journal entry
-    const journalEntry = new Journal({
-      userId: mongooseUserId,
-      date,
-      wordHistory,
-      task1,
-      task2,
-      task3
+    res.status(201).json({ 
+      message: 'Journal entry saved successfully', 
+      entry 
     });
-
-    await journalEntry.save();
-
-    console.log('📥 Received journal entry:', req.body);
-    console.log('✅ Saved journal entry:', journalEntry);
-
-    res.status(201).json({
-      message: 'Journal entry saved successfully',
-      id: journalEntry._id,
-      journal: journalEntry
-    });
-
   } catch (err) {
-    console.error('❌ Error saving journal entry:', err);
-    res.status(500).json({ error: 'Error saving journal entry', details: err.message });
+    console.error('Error saving journal entry:', err);
+    res.status(500).json({ 
+      error: 'Error saving journal entry', 
+      details: err.message 
+    });
   }
 });
 
-// GET route (already working)
+// GET /api/journal - Get user's journal
 app.get('/api/journal', authenticateToken, async (req, res) => {
   try {
     const entries = await Journal.find({ userId: req.user.id }).sort({ date: -1 });
     res.json(entries);
   } catch (err) {
-    console.error('❌ Error fetching journal:', err);
+    console.error('Error fetching journal:', err);
     res.status(500).json({ error: 'Error fetching journal' });
   }
 });
