@@ -30,7 +30,7 @@ const testSchema = new mongoose.Schema({
   storyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Story',
-    required: false
+    required: true
   },
   questions: [{
     question: {
@@ -62,3 +62,4 @@ testSchema.pre('save', function(next) {
 });
 
 module.exports = mongoose.model('Test', testSchema);
+
