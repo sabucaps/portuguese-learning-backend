@@ -222,15 +222,18 @@ app.post('/api/journal', authenticateToken, async (req, res) => {
 
     // Validate required fields
     if (!userId || !date || !Array.isArray(wordHistory)) {
-      return res.status(400).json({ 
-        error: 'Missing required fields'  
-      });
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
     // Ensure userId is a valid ObjectId
-    const mongooseUserId = mongoose.Types.ObjectId(userId);
+    let mongooseUserId;
+    try {
+      mongooseUserId = mongoose.Types.ObjectId(userId);
+    } catch {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
 
-    // Create and save the journal entry
+    // Create journal entry
     const journalEntry = new Journal({
       userId: mongooseUserId,
       date,
@@ -242,30 +245,28 @@ app.post('/api/journal', authenticateToken, async (req, res) => {
 
     await journalEntry.save();
 
+    console.log('📥 Received journal entry:', req.body);
     console.log('✅ Saved journal entry:', journalEntry);
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'Journal entry saved successfully',
-      id: journalEntry._id,   // Real MongoDB ID
+      id: journalEntry._id,
       journal: journalEntry
     });
 
   } catch (err) {
     console.error('❌ Error saving journal entry:', err);
-    res.status(500).json({ 
-      error: 'Error saving journal entry', 
-      details: err.message 
-    });
+    res.status(500).json({ error: 'Error saving journal entry', details: err.message });
   }
 });
 
-// GET /api/journal - Get user's journal
+// GET route (already working)
 app.get('/api/journal', authenticateToken, async (req, res) => {
   try {
     const entries = await Journal.find({ userId: req.user.id }).sort({ date: -1 });
     res.json(entries);
   } catch (err) {
-    console.error('Error fetching journal:', err);
+    console.error('❌ Error fetching journal:', err);
     res.status(500).json({ error: 'Error fetching journal' });
   }
 });
