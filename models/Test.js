@@ -30,7 +30,7 @@ const testSchema = new mongoose.Schema({
   storyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Story',
-    required: true
+    required: false
   },
   questions: [{
     question: {
