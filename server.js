@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -14,7 +15,6 @@ const Conjugation = require('./models/Conjugation');
 const User = require('./models/User');
 const Sentence = require('./models/Sentence');
 const ImagePrompt = require('./models/ImagePrompt');
-const Journal = require('./models/Journal'); // ✅ ADDED: This was missing
 const { router: authRoutes, authenticateToken } = require('./routes/auth');
 const flashcardsRoute = require('./routes/flashcards');
 const app = express();
@@ -79,11 +79,12 @@ app.get('/api/sentences', async (req, res) => {
 // Mount modular routes
 // -----------------------
 app.use('/api/auth', authRoutes);
-app.use('/api/flashcards', flashcardsRoute);
+app.use('/api/flashcards', flashcardsRoute); // <-- flashcards route file (protected inside router)
 
 // -----------------------
 // WORDS & GROUPS
 // -----------------------
+// GET /api/words - Returns words with user's progress merged
 app.get('/api/words', authenticateToken, async (req, res) => {
   try {
     const words = await Word.find().sort({ portuguese: 1 });
@@ -108,6 +109,7 @@ app.get('/api/words', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/words - Create new word (no user progress yet)
 app.post('/api/words', authenticateToken, async (req, res) => {
   try {
     const { portuguese, english, group, examples, imageUrl } = req.body;
@@ -121,23 +123,29 @@ app.post('/api/words', authenticateToken, async (req, res) => {
   }
 });
 
+// PUT /api/words/:id - Save user's review progress
 app.put('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
+    // Validate word exists
     const word = await Word.findById(id);
     if (!word) return res.status(404).json({ error: 'Word not found' });
 
+    // Get user
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Initialize map if needed
     if (!user.progress.words.map) {
       user.progress.words.map = new Map();
     }
 
+    // Extract only the progress fields from request
     const { ease, interval, reviewCount, lastReviewed, nextReview } = req.body;
 
+    // Save progress to user's map
     user.progress.words.map.set(id, {
       ease: ease || 2.5,
       interval: interval || 0,
@@ -146,8 +154,10 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
       nextReview: nextReview || null
     });
 
+    // Save user document
     await user.save();
 
+    // Return the word with merged progress (frontend expects this)
     res.json({
       ...word.toObject(),
       ease: ease || 2.5,
@@ -162,6 +172,7 @@ app.put('/api/words/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/words/:id
 app.delete('/api/words/:id', authenticateToken, async (req, res) => {
   try {
     const word = await Word.findByIdAndDelete(req.params.id);
@@ -209,46 +220,6 @@ app.put('/api/groups/:oldName', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error updating group:', err);
     res.status(500).json({ error: 'Error updating group' });
-  }
-});
-
-// -----------------------
-// JOURNAL
-// -----------------------
-// POST /api/journal - Save journal entry
-app.post('/api/journal', authenticateToken, async (req, res) => {
-  try {
-    const { userId, date, wordHistory, task1, task2, task3 } = req.body;
-
-    // Security: Ensure user can't save for another user
-    if (req.user.id !== userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    const entry = new Journal({ userId, date, wordHistory, task1, task2, task3 });
-    await entry.save();
-
-    res.status(201).json({ 
-      message: 'Journal entry saved successfully', 
-      entry 
-    });
-  } catch (err) {
-    console.error('Error saving journal entry:', err);
-    res.status(500).json({ 
-      error: 'Error saving journal entry', 
-      details: err.message 
-    });
-  }
-});
-
-// GET /api/journal - Get user's journal
-app.get('/api/journal', authenticateToken, async (req, res) => {
-  try {
-    const entries = await Journal.find({ userId: req.user.id }).sort({ date: -1 });
-    res.json(entries);
-  } catch (err) {
-    console.error('Error fetching journal:', err);
-    res.status(500).json({ error: 'Error fetching journal' });
   }
 });
 
@@ -409,6 +380,8 @@ app.delete('/api/saved-stories/:storyId', authenticateToken, async (req, res) =>
   }
 });
 
+
+
 // -----------------------
 // TESTS
 // -----------------------
@@ -455,10 +428,11 @@ app.delete('/api/tests/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Get tests by story ID
 app.get('/api/tests/story/:storyId', async (req, res) => {
   try {
     const { storyId } = req.params;
-    const tests = await Test.find({ storyId });
+    const tests = await Test.find({ storyId }); // assumes Test model has `storyId` field
     res.json(tests);
   } catch (err) {
     console.error('Error fetching tests for story:', err);
@@ -477,7 +451,6 @@ app.get('/api/tests/:id', async (req, res) => {
     res.status(500).json({ error: 'Error fetching test' });
   }
 });
-
 // -----------------------
 // GRAMMAR LESSONS
 // -----------------------
@@ -524,7 +497,10 @@ app.delete('/api/grammar/:id', authenticateToken, async (req, res) => {
   }
 });
 
+
 // ===== IMAGE PROMPTS ENDPOINTS =====
+
+// GET /api/image-prompts - Get all active prompts
 app.get('/api/image-prompts', async (req, res) => {
   try {
     const prompts = await ImagePrompt.find({ isActive: true }).select('word imageUrl category').sort({ word: 1 });
@@ -535,17 +511,20 @@ app.get('/api/image-prompts', async (req, res) => {
   }
 });
 
+// GET /api/image-prompts/random/:count - Get N random prompts
 app.get('/api/image-prompts/random/:count', async (req, res) => {
   try {
     const count = parseInt(req.params.count) || 4;
     const maxCount = 6;
     const limit = Math.min(count, maxCount);
 
+    // Get total count
     const total = await ImagePrompt.countDocuments({ isActive: true });
     if (total === 0) {
       return res.json([]);
     }
 
+    // If collection is small, use sample
     if (total <= 100) {
       const prompts = await ImagePrompt.aggregate([
         { $match: { isActive: true } },
@@ -554,6 +533,7 @@ app.get('/api/image-prompts/random/:count', async (req, res) => {
       ]);
       res.json(prompts);
     } else {
+      // For large collections, use random skip
       const skip = Math.max(0, Math.floor(Math.random() * (total - limit)));
       const prompts = await ImagePrompt.find({ isActive: true })
         .select('word imageUrl category')
@@ -567,6 +547,7 @@ app.get('/api/image-prompts/random/:count', async (req, res) => {
   }
 });
 
+// POST /api/image-prompts - Add a new prompt (admin only)
 app.post('/api/image-prompts', authenticateToken, async (req, res) => {
   try {
     const { word, imageUrl, category = 'Other', difficulty = 1 } = req.body;
@@ -575,6 +556,7 @@ app.post('/api/image-prompts', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Word and imageUrl are required' });
     }
 
+    // Check for duplicates
     const existing = await ImagePrompt.findOne({ 
       $or: [
         { word: new RegExp(`^${word}$`, 'i') },
@@ -609,6 +591,7 @@ app.post('/api/image-prompts', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/image-prompts/:word - Remove a prompt
 app.delete('/api/image-prompts/:word', authenticateToken, async (req, res) => {
   try {
     const { word } = req.params;
@@ -678,11 +661,13 @@ app.post('/auth/change-password', authenticateToken, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Check current password
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
 
+    // Hash new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
 
@@ -694,6 +679,8 @@ app.post('/auth/change-password', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error changing password' });
   }
 });
+
+
 
 // -----------------------
 // HEALTH CHECK
@@ -730,3 +717,5 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
 });
+
+
